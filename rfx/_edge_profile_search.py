@@ -11,7 +11,7 @@ from math import ceil, log
 import numpy as np
 from scipy.optimize import linprog
 
-from rfx.errors import RfxRefusal
+from rfx.errors import EdgeAwareProfileRefusal, RfxRefusal
 
 
 _FLOOR = 0.1
@@ -169,13 +169,13 @@ def _project(left, right, state, count, floor, ratio):
 
 def _union(states, costs):
     if costs:
-        kept = []
+        kept: list[_State] = []
         for state in sorted(states, key=lambda s: (s.cost, s.low, -s.high)):
             if not any(old.cost <= state.cost and old.low <= state.low and old.high >= state.high
                        for old in kept):
                 kept.append(state)
         return kept
-    merged = []
+    merged: list[_State] = []
     for state in sorted(states, key=lambda s: s.low):
         if merged and state.low <= merged[-1].high:
             merged[-1].high = max(merged[-1].high, state.high)
@@ -529,7 +529,7 @@ def _fallback(lo, hi, dx, faces, edges, ratio, boundary_cell, edge_offset):
     except RuntimeError as exc:
         raise RuntimeError(f"edge-aware diagnostic internal error on axis {axis}, drawing="
                            f"{(lo, hi, faces, edges)!r}: {exc}") from exc
-    refusal = RfxRefusal()
+    refusal = EdgeAwareProfileRefusal()
     refusal.axis, refusal.diagnostic_kind, refusal.blocked_runs = axis, kind, runs
     refusal.route_dx = refusal.route_boundary_cell = None
     refusal._rule = (dx, ratio, boundary_cell, edge_offset)

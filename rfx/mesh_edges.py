@@ -45,7 +45,7 @@ from __future__ import annotations
 from rfx.errors import ConfigurationWarning
 import heapq
 import warnings
-from typing import NamedTuple, Sequence
+from typing import Any, NamedTuple, Sequence, cast
 
 import numpy as np
 
@@ -608,11 +608,11 @@ def edge_aware_profiles(
     from rfx.errors import RfxRefusal
 
     out = {}
-    for a, lo, hi, axis_faces, axis_edges in drawings:
+    for a, lo, hi, axis_faces, axis_edges in cast(Any, drawings):
         try:
             with _axis_call(a):
                 prof = edge_aware_profile(
-                    lo, hi, dx, faces=axis_faces, sheet_edges=axis_edges,
+                    lo, hi, dx, faces=axis_faces, sheet_edges=cast(Sequence[SheetEdge], axis_edges),
                     max_ratio=max_ratio, boundary_cell=pin, edge_offset=edge_offset)
         except RfxRefusal as exc:
             raise _complete_refusal(exc, drawings, float(dx), float(max_ratio),

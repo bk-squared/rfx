@@ -97,6 +97,9 @@
     "Diagnostic": {
       "kind": "class"
     },
+    "EdgeAwareProfileRefusal": {
+      "kind": "class"
+    },
     "FarFieldResult": {
       "kind": "class"
     },

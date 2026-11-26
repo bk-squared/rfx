@@ -1,5 +1,15 @@
 """Public bases for rfx exceptions and warnings."""
 
+from typing import Literal as _Literal, TypedDict as _TypedDict
+
+
+class _EdgeAwareBlockedRun(_TypedDict):
+    lo: float
+    hi: float
+    gap: float
+    nearest_below: float | None
+    nearest_above: float | None
+
 
 class RfxError(Exception):
     """Base of every exception rfx defines."""
@@ -7,6 +17,18 @@ class RfxError(Exception):
 
 class RfxRefusal(RfxError, ValueError):
     """rfx refuses a request it cannot compute correctly; the message says why and what to do."""
+
+
+class EdgeAwareProfileRefusal(RfxRefusal):
+    """An edge-aware axis cannot close under the requested cell rule."""
+
+    axis: str
+    diagnostic_kind: _Literal["local", "forward"]
+    blocked_runs: list[_EdgeAwareBlockedRun]
+    route_dx: float | None
+    route_boundary_cell: float | None
+    _rule: tuple[float, float, float | None, float]
+    _route_follows_dx: bool
 
 
 class RfxUnsupported(RfxRefusal, NotImplementedError):
