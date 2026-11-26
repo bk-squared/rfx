@@ -543,3 +543,25 @@ def test_e6_empty_partners_reproduce_the_old_face_shrink(monkeypatch):
         sheet_edges=[SheetEdge(5.0e-3, -1)])
     assert old.cells.min() == 4.150613333333327e-05
     assert old.cells.size == 30
+
+
+@pytest.mark.parametrize("kwargs, message", [
+    ({"max_ratio": np.nan}, "max_ratio must be a finite number > 1 (got nan)"),
+    ({"max_ratio": np.inf}, "max_ratio must be a finite number > 1 (got inf)"),
+    ({"max_ratio": 1.0}, "max_ratio must be a finite number > 1 (got 1.0)"),
+    ({"max_ratio": 1.00001},
+     "max_ratio must be >= 1.0001 (got 1.00001): a 2x transition at that ratio already needs "
+     f"{int(np.ceil(np.log(2.0) / np.log(1.0001)))} cells, and "
+     "the plateau solve's cost grows with the ramp length"),
+    ({"boundary_cell": 0.0}, "boundary_cell must be > 0"),
+    ({"boundary_cell": -1.0}, "boundary_cell must be > 0"),
+    ({"boundary_cell": np.nan}, "boundary_cell must be > 0"),
+])
+def test_invalid_ratio_and_end_cells_are_refused_before_construction(monkeypatch, kwargs, message):
+    def unexpected_build(*args, **options):
+        raise AssertionError("invalid input reached the construction")
+
+    monkeypatch.setattr("rfx.mesh_edges._build", unexpected_build)
+    with pytest.raises(ValueError) as caught:
+        edge_aware_profile(0.0, 0.01, 0.001, **kwargs)
+    assert str(caught.value) == message
