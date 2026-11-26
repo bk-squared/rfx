@@ -1,7 +1,7 @@
 """Node-line comparisons shared by automatic meshing and realization admission."""
 from __future__ import annotations
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -17,7 +17,7 @@ class ConductorMiss(NamedTuple):
         return self.subcell or abs(self.extent_percent) > 1. or self.delta > .01 * self.length
 
 
-def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_bounds=None,
+def conductor_node_miss(nodes, bounds: tuple[Any, Any], axis, neighbours=(), plane=None, domain_bounds=None,
                         period=None):
     """Compare a Box window or an already realized sheet plane on one axis.
 

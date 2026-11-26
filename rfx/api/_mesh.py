@@ -5,6 +5,13 @@ inputs without triggering resolution. Declaration validation uses that snapshot;
 grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
+from typing import Any, TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from rfx.geometry.rasterize_grid import GridCoords
+    from rfx.grid import Grid
+    from rfx.model.graded_grid import NonUniformGrid
+
 from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import RfxRefusal, RfxUnsupported, RfxWarning
@@ -35,6 +42,12 @@ class _MeshField:
 
 
 class _MeshMixin:
+    if TYPE_CHECKING:
+        _mode: str
+        _snap: str
+        _geometry: list[Any]
+        _thin_conductors: list[Any]
+
     _dx = _MeshField()
     _domain = _MeshField()
     _dx_profile = _MeshField()
@@ -177,6 +190,9 @@ class _MeshMixin:
             return original
         if context.error is not None:
             return original
+        grid = cast("Grid | NonUniformGrid", context.grid)
+        coords = cast("GridCoords", context.coords)
+        nodes = cast(list[np.ndarray], context.nodes)
         if "z" in getattr(context.grid, "periodic_axes", ""):
             return original
         lines = context.interior_node_lines()
@@ -204,10 +220,10 @@ class _MeshMixin:
                         axis, k = dc_film_plane(shape, context.grid)
                     else:
                         k = sheet_plane_from_shape(
-                            shape, context.coords, context.cell_sizes, normal_axis=2,
+                            shape, coords, context.cell_sizes, normal_axis=2,
                             grid=context.grid)
                         axis = 2
-                    plane = float(context.nodes[axis][k])
+                    plane = float(nodes[axis][k])
                 except context._NARROW_EXCS:
                     continue
             miss = conductor_node_miss(
@@ -218,7 +234,7 @@ class _MeshMixin:
                 reason = (label, offending)
         if reason is None:
             return original
-        dx = float(context.grid.dx)
+        dx = float(grid.dx)
         profile, merges = _conductor_dz_profile(
             features, original["_domain"][2], dx, 4, planes, thin_intervals)
         replacement = dict(original, _dx=dx, _dz_profile=profile)
@@ -228,7 +244,7 @@ class _MeshMixin:
         self.__dict__["_mesh_resolution"] = (inputs, replacement)
         rebuilt = _CampaignStaticsContext(self)
         if rebuilt.error is not None:
-            raise rebuilt._assembly_exception
+            raise cast(Exception, rebuilt._assembly_exception)
         new_lines = rebuilt.interior_node_lines()
         for a in range(2):
             if lines[a].tobytes() != new_lines[a].tobytes():

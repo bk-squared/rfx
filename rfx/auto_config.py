@@ -19,7 +19,7 @@ Usage
 from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from rfx.sources.sources import GaussianPulse, ModulatedGaussian, CWSource, CustomWaveform
@@ -149,8 +149,8 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     max_loss_tangent = 0.0
     z_features = []
     z_sheet_planes = []
-    z_conductor_planes = []
-    z_conductors = []
+    z_conductor_planes: list[float] = []
+    z_conductors: list[tuple[Any, bool, str]] = []
     from rfx.geometry.csg import Box
     thin_shapes = {id(getattr(tc, "shape", tc)) for tc in thin_conductors or ()}
 
@@ -1075,8 +1075,8 @@ def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
                  _MIN_THIRDS_SUBCELL_M, _CONDUCTOR_THIRDS_FLOOR_FRACTION * target(sum(cells[:i])))]
     split_flags = []
     for _, _, _, start, end in block_meta:
-        split_flags.append(tuple(i in outer and 0 < i < len(cells) and
-            min(cells[i-1], cells[i])/3 >= _MIN_THIRDS_SUBCELL_M for i in (start, end)))
+        split_flags.append(cast(tuple[bool, bool], tuple(i in outer and 0 < i < len(cells) and
+            min(cells[i-1], cells[i])/3 >= _MIN_THIRDS_SUBCELL_M for i in (start, end))))
     post = apply_thirds_rule(cells, outer)
     profile = _band_smooth_post_thirds(
         post, feature_bounds, block_meta, split_flags, dx, min_cells,

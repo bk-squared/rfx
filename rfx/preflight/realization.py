@@ -68,7 +68,11 @@ from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from rfx.grid import Grid
+    from rfx.model.graded_grid import NonUniformGrid
 
 from rfx.geometry.rasterize_grid import GridCoords
 
@@ -424,9 +428,10 @@ class _CampaignStaticsContext:
 
     def interior_node_lines(self):
         """Read the context's float64 node spine without absorber padding."""
-        grid = self.grid
+        grid = cast("Grid | NonUniformGrid", self.grid)
+        node_lines = cast(list[np.ndarray], self.nodes)
         return tuple(nodes[pad:grid.shape[a] - getattr(grid, f"pad_{'xyz'[a]}_hi")]
-                     for a, (nodes, pad) in enumerate(zip(self.nodes, grid.axis_pads)))
+                     for a, (nodes, pad) in enumerate(zip(node_lines, grid.axis_pads)))
 
     def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
