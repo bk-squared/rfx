@@ -688,30 +688,31 @@ this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_E
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
 
-### Microstrip `Z0` and `beta` at the lowest bins change by tens of percent with parts of the board far from the probes, while S does not.
+### Microstrip `Z0` and `beta` at 0.50–0.81 GHz change by up to 2.1 % with parts of the board far from the probes, while S does not.
 
 Tracker: #3065
 
 `compute_msl_s_matrix(...)` fits each port's `Z0` and `beta` from the voltages at its probes, which span `(n_probes - 1) * n_probe_spacing` cells.
 At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
-The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
+On three of these layouts, measured with float64 runs beside them, float32 rounding in the running DFT sums made part of these changes; the sums are now compensated. At 0.50–0.81 GHz the change still reaches 2.1 % and its cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
 One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
-Every number in this entry is from float32 runs, rfx's default precision.
+Every number in this entry but the last paragraph's is from float32 runs, rfx's default precision.
 Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
 
 | phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
 |---|---|---|---|
-| 0.012–0.020 rad | 0.50–0.81 GHz | 63 % | 38 % |
-| 0.024–0.043 rad | 0.97–1.74 GHz | 5.4 % | 4.3 % |
-| 0.047–0.107 rad | 1.90–4.38 GHz | 1.4 % | 1.4 % |
+| 0.012–0.020 rad | 0.50–0.81 GHz | 2.1 % | 2.0 % |
+| 0.024–0.043 rad | 0.97–1.74 GHz | 0.88 % | 0.81 % |
+| 0.047–0.107 rad | 1.90–4.38 GHz | 0.93 % | 0.94 % |
 
-At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
-The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
-`probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
-Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
-The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz. It now points to `fit_span_phase` and `fit_amplification` and no longer advises a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
-Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
+At 0.50 GHz the returned `Z0` ran from 44.2 to 45.1 Ω on this one line.
+`probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–0.81 GHz on every layout, so neither marks these bins.
+Neither fitted value enters S: across these layouts no S entry changed by more than 4.9e-4 at any bin.
+Neither the `Z0` warning nor the `beta` scan's ±35 % warning fired on any of the 26 layouts. The `Z0` warning points to `fit_span_phase` and `fit_amplification` and does not advise a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
+Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.016 rad: at 0.012 rad (0.50 GHz) the change exceeded 2 % on this board, and at 0.016 rad it did not.
 That edge comes from one board on one mesh; no layout with a longer probe span was measured.
+
+In float64 runs of two of these layouts (feed-to-face 3.6 and 6.6 cells, 16 CPML layers) with 17 probes, the part of the returned `beta` that changed with the layout fell with distance from the driven port's feed. Fitted per bin at 1.43–4.22 GHz over probe windows centred 11–19 h from the feed (h the substrate height), it is under 1 % from 8.3 h from the feed to the first of 5 probes 2 cells apart (9.7 h to their centre). That distance lies below the measured windows and is an extrapolation of the fitted fall. At 1 read bin the difference did not fall with distance, and it is left out. The distance is not shown to carry to 8 CPML layers: on an 8-layer layout the table's 0.94 % (2.52 GHz, probes centred 11.0 h from the feed), carried toward the feed with the fall fitted on the 16-layer layouts, reaches 1 % with the probes centred about 10.7 h from the feed, against about 9.9 h on 16 and 32 layers by the same step. The feed and the board end behind it were not separated, and a part common to all layouts is not seen. This concerns the returned `beta` only: S does not use it. It is not a clearance rule for the field launched at the feed.
 
 ### On a straight microstrip, the MSL port's |S21| exceeds 0 dB near 10–12 GHz and depends on where the first probe sits: the port misreads power within about 10 mm of its plane.
 
