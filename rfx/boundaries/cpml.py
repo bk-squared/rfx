@@ -952,7 +952,7 @@ def apply_cpml_e(
 def apply_cpml_h(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None, *, periodic=None, faces=ALL_FACES,
-    frame=None, owned=None, h_row_factors=(None, None, None),
+    frame=None, owned=None, h_row_factors=(None, None, None), h_coefficients=None,
 ) -> tuple:
     """Apply slab-local CPML correction to the selected H-field faces.
 
@@ -969,6 +969,7 @@ def apply_cpml_h(
     guided-mode absorption (equivalent to UPML).
 
     Magnetic derivatives lie at half-cell coordinates relative to electric nodes.
+    ``h_coefficients`` supplies precomputed tangential face-window products.
     """
     faces = selected_faces(axes, faces)
     n = grid.cpml_layers
@@ -979,18 +980,22 @@ def apply_cpml_h(
     faces = faces.intersection(face for face, depth in face_depths.items() if depth)
     owned = {} if owned is None else owned
     from rfx.boundaries.electric_coefficient import coefficient_dt
-    dt = coefficient_dt(grid.dt, state.hx.dtype)
+    dt = coefficient_dt(grid.dt, state.hx.dtype) if h_coefficients is None else h_coefficients.dt
     from rfx.model.materials import h_components
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
-    if magnetic_materials is None:
+    if h_coefficients is not None:
+        mu: tuple = ()
+    elif magnetic_materials is None:
         mu = (1.0, 1.0, 1.0)
     else:
         mu = h_components(magnetic_materials, grid, periodic=periodic)
-    ch = tuple(dt / (m * MU_0) for m in mu)
+    ch = tuple(dt / (m * MU_0) for m in mu) if h_coefficients is None else h_coefficients.faces
 
     def _h_face(component, axis, lo):
+        if h_coefficients is not None:
+            return h_coefficients.faces[component, axis, lo]
         arr = ch[component]
         window = windows[f"{'xyz'[axis]}_{'lo' if lo else 'hi'}"]
         if jnp.ndim(arr) != 0:

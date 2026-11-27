@@ -22,13 +22,15 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              stencil_order: int = 2,
              bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
              magnetic_factors=(None, None, None),
-             h_row_factors=(None, None, None), bloch_operand=None) -> FDTDState:
+             h_row_factors=(None, None, None), bloch_operand=None,
+             h_coefficients=None) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
 
     Note: uses a single ``dx`` for all three axes (cubic cells: dx=dy=dz).
     For non-uniform z grids, use ``update_h_nu`` / ``update_e_nu`` instead.
+    ``h_coefficients`` supplies the three already factored curl coefficients.
 
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
     stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
@@ -58,16 +60,19 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = (materials.components.mu_update if materials.components is not None
-          else component_h_materials(materials, periodic, high_wall=high_wall))
-    if _realized.ACTIVE is not None:
-        mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
-    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
-    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
+    if h_coefficients is None:
+        mu = (materials.components.mu_update if materials.components is not None
+              else component_h_materials(materials, periodic, high_wall=high_wall))
+        if _realized.ACTIVE is not None:
+            mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
+        mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
+        ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
-    from rfx.boundaries.pmc import magnetic_update_coefficients
-    ch_x, ch_y, ch_z = magnetic_update_coefficients(
-        (ch_x, ch_y, ch_z), h_row_factors)
+        from rfx.boundaries.pmc import magnetic_update_coefficients
+        ch_x, ch_y, ch_z = magnetic_update_coefficients(
+            (ch_x, ch_y, ch_z), h_row_factors)
+    else:
+        ch_x, ch_y, ch_z = h_coefficients
 
     curl_x = (
         _diff_fwd_o(ez, 1, periodic, so, bloch) / dx
