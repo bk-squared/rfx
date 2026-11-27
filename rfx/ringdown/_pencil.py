@@ -33,20 +33,14 @@ class IdentificationMemoryRefused(RfxRefusal):
 
     __module__ = "rfx.ringdown"
 
-    def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r,
-                 unresolved=False, cause="count", block=None):
+    def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r):
         self.stage = stage
         self.needed_bytes = needed_bytes
         self.bound_bytes = bound_bytes
         self.n_win, self.Nd, self.C = n_win, Nd, C
         self.L, self.M, self.k, self.r = L, M, k, r
-        self.unresolved, self.cause, self.block = unresolved, cause, block
+        self.unresolved, self.cause, self.block = False, "count", None
         name = "pencil" if stage == 1 else "residue fit"
-        if unresolved:
-            clause = ("the partial SVD reached the full SVD's operation count"
-                      if cause != "block" else
-                      f"a partial-SVD block of b={block} exceeded the bound")
-            name += f", full-SVD fallback after {clause}"
         order = f"k={k}" if stage == 1 else f"rank={r}"
         super().__init__(
             f"identification would need {needed_bytes / 2**30:.2f} GiB "
@@ -54,6 +48,15 @@ class IdentificationMemoryRefused(RfxRefusal):
             f"{order}), above the {bound_bytes / 2**30:.2f} GiB bound; "
             "shorten the identification window, identify on fewer channels, "
             "or raise rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES")
+
+    def _mark_unresolved(self, cause, block):
+        """Attach partial-method metadata inside the existing memory span."""
+        self.unresolved, self.cause, self.block = True, cause, block
+        clause = ("the partial SVD reached the full SVD's operation count"
+                  if cause != "block" else
+                  f"a partial-SVD block of b={block} exceeded the bound")
+        self.args = (self.args[0].replace(
+            "(pencil;", f"(pencil, full-SVD fallback after {clause};"),)
 
     def __reduce__(self):
         dimensions = {name: getattr(self, name) for name in ("n_win", "Nd", "C", "L", "M", "k", "r")}
@@ -63,8 +66,10 @@ class IdentificationMemoryRefused(RfxRefusal):
 
 def _restore_memory_refusal(stage, needed_bytes, bound_bytes, dimensions,
                             unresolved=False, cause="count", block=None):
-    return IdentificationMemoryRefused(stage, needed_bytes, bound_bytes, **dimensions,
-                                       unresolved=unresolved, cause=cause, block=block)
+    refusal = IdentificationMemoryRefused(stage, needed_bytes, bound_bytes, **dimensions)
+    if unresolved:
+        refusal._mark_unresolved(cause, block)
+    return refusal
 
 
 def _validate_memory_bound(bound):
@@ -209,10 +214,12 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *, svd="full", n_win
                 n_win, Yd.shape, bound=rd.IDENTIFY_MEMORY_BOUND_BYTES,
                 pencil_parameter=parameter)
         except IdentificationMemoryRefused as exc:
-            raise IdentificationMemoryRefused(
+            refusal = IdentificationMemoryRefused(
                 exc.stage, exc.needed_bytes, exc.bound_bytes,
                 n_win=exc.n_win, Nd=exc.Nd, C=exc.C, L=exc.L, M=exc.M,
-                k=exc.k, r=exc.r, unresolved=True, cause=result.cause, block=result.b) from exc
+                k=exc.k, r=exc.r)
+            refusal._mark_unresolved(result.cause, result.b)
+            raise refusal from exc
 
     return _core_pencil(Yd, sv_rel, unit_tol, pencil_parameter=parameter)
 
