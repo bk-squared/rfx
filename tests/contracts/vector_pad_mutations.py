@@ -105,8 +105,12 @@ raise SystemExit(pytest.main([{node!r}, '-q', '-s', '-o', 'addopts=']))
     print(f'VECTOR PAD MUTATION MATCH {name}: message={message!r} '
           f'failures={failures} exit={result.returncode}', file=sys.stderr)
     if path == PIN_FILE:
+        sections = result.stdout.split('short test summary info')[0].split(f'_ {test}[')[1:]
         for target in ('aligned', 'odd', 'aligned_slow'):
-            assert f'{test}[{target}]' in result.stdout, (name, target)
+            section, = (s for s in sections if s.startswith(f'{target}] _'))
+            expected = ('coax forward/odd: difference / bar'
+                        if (name, target) == ('forward-high-end-view', 'odd') else message)
+            assert expected in section, (name, target)
         if name == 'run-high-end-view':
             assert 'coax_port_metadata' in result.stdout, name
             assert 'sparam_time_records' in result.stdout, name

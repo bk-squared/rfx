@@ -2,7 +2,7 @@
 
 Each path pads by the stepping layer (``rfx.stepping.vector_pad``) and must
 return the unpadded run's bytes on the CPU, or, for a case listed in
-``NOT_BITWISE`` (measured not bitwise), stay within bar (ii) of
+``NOT_BITWISE`` (measured not bitwise on at least one platform), stay within bar (ii) of
 ``tests/unit/runners/test_vector_pad.py`` at N, 2N and 4N steps, each output
 judged on its own largest magnitude (a probe series per column). The memory
 planners estimate from the extents the step allocates.
@@ -132,7 +132,7 @@ def test_coax_port_until_decay_padded(target, monkeypatch):
 
     def records(n):
         kwargs = dict(until_decay=1e-3, decay_check_interval=50,
-                      decay_min_steps=200, decay_max_steps=600)
+                      decay_min_steps=200, decay_max_steps=n)
         ref, off, result = _coax_run_record('off', n, **kwargs)
         _coax_arrival(result, f'until_decay/{target} source=run().sparam_time_records')
         got, plans, padded = _coax_run_record(target, n, **kwargs)
