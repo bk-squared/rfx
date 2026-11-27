@@ -33,13 +33,20 @@ class IdentificationMemoryRefused(RfxRefusal):
 
     __module__ = "rfx.ringdown"
 
-    def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r):
+    def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r,
+                 unresolved=False, cause="count", block=None):
         self.stage = stage
         self.needed_bytes = needed_bytes
         self.bound_bytes = bound_bytes
         self.n_win, self.Nd, self.C = n_win, Nd, C
         self.L, self.M, self.k, self.r = L, M, k, r
+        self.unresolved, self.cause, self.block = unresolved, cause, block
         name = "pencil" if stage == 1 else "residue fit"
+        if unresolved:
+            clause = ("the partial SVD reached the full SVD's operation count"
+                      if cause != "block" else
+                      f"a partial-SVD block of b={block} exceeded the bound")
+            name += f", full-SVD fallback after {clause}"
         order = f"k={k}" if stage == 1 else f"rank={r}"
         super().__init__(
             f"identification would need {needed_bytes / 2**30:.2f} GiB "
@@ -50,11 +57,14 @@ class IdentificationMemoryRefused(RfxRefusal):
 
     def __reduce__(self):
         dimensions = {name: getattr(self, name) for name in ("n_win", "Nd", "C", "L", "M", "k", "r")}
-        return (_restore_memory_refusal, (self.stage, self.needed_bytes, self.bound_bytes, dimensions))
+        return (_restore_memory_refusal, (self.stage, self.needed_bytes, self.bound_bytes,
+                                         dimensions, self.unresolved, self.cause, self.block))
 
 
-def _restore_memory_refusal(stage, needed_bytes, bound_bytes, dimensions):
-    return IdentificationMemoryRefused(stage, needed_bytes, bound_bytes, **dimensions)
+def _restore_memory_refusal(stage, needed_bytes, bound_bytes, dimensions,
+                            unresolved=False, cause="count", block=None):
+    return IdentificationMemoryRefused(stage, needed_bytes, bound_bytes, **dimensions,
+                                       unresolved=unresolved, cause=cause, block=block)
 
 
 def _validate_memory_bound(bound):
@@ -170,11 +180,41 @@ def _decimate(Y: np.ndarray, factors) -> np.ndarray:
     return _core_decimate(Y, factors, decimate_fn=_harminv.scipy_decimate)
 
 
-def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
-    """Keep ringdown's configured pencil fraction and uncapped rank."""
-    from rfx.ringdown import PENCIL_PARAMETER
+def _partial_fits(shape, b):
+    """Check a block's charge before any partial-method allocation."""
+    from rfx import ringdown as rd
+    from rfx.measurement._hankel_svd import _partial_memory_bytes
 
-    return _core_pencil(Yd, sv_rel, unit_tol, pencil_parameter=PENCIL_PARAMETER)
+    bound = rd.IDENTIFY_MEMORY_BOUND_BYTES
+    _validate_memory_bound(bound)
+    columns = int(_harminv._pencil_columns(shape[0], rd.PENCIL_PARAMETER))
+    return _partial_memory_bytes(shape, columns, b) <= bound
+
+
+def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *, svd="full", n_win=None):
+    """Keep ringdown's configured pencil fraction and uncapped rank."""
+    from rfx import ringdown as rd
+
+    parameter = rd.PENCIL_PARAMETER
+    if svd == "partial":
+        from rfx.measurement._hankel_svd import _PartialSVD
+
+        result = _core_pencil(Yd, sv_rel, unit_tol, pencil_parameter=parameter,
+                              svd=svd, fits=lambda b: _partial_fits(Yd.shape, b))
+        if not isinstance(result, _PartialSVD):
+            return result
+        result.operator = None
+        try:
+            rd._check_identification_memory(
+                n_win, Yd.shape, bound=rd.IDENTIFY_MEMORY_BOUND_BYTES,
+                pencil_parameter=parameter)
+        except IdentificationMemoryRefused as exc:
+            raise IdentificationMemoryRefused(
+                exc.stage, exc.needed_bytes, exc.bound_bytes,
+                n_win=exc.n_win, Nd=exc.Nd, C=exc.C, L=exc.L, M=exc.M,
+                k=exc.k, r=exc.r, unresolved=True, cause=result.cause, block=result.b) from exc
+
+    return _core_pencil(Yd, sv_rel, unit_tol, pencil_parameter=parameter)
 
 
 def _to_original_rate(lam_dec: np.ndarray, D: int, dt: float, guard):
