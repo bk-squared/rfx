@@ -122,9 +122,13 @@ def test_T4_cost_stop_and_bit_exact_fallback(monkeypatch, wide):
     normalized = y/np.sqrt(np.mean(np.abs(y)**2, axis=0))
     result = hs._partial_svd(normalized, columns, 1e-6, lambda b: True)
     report('T4 noise', result)
+    rows, width = len(y) - columns, columns*y.shape[1]
+    k = min(rows, width)
+    full_cost = 4*(6*max(rows, width)*k*k + 20*k**3)
     assert result.cause == 'count'
-    assert result.counter <= result.full_cost
-    assert result.b <= min(len(y) - columns, columns*y.shape[1])
+    assert result.full_cost == full_cost
+    assert result.counter <= full_cost
+    assert result.b <= k
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', np.inf)
     actual = rd._pencil(y, 1e-6, 1e-6, svd='partial', n_win=len(y))
     matrix = formed(normalized, columns)
