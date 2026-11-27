@@ -8,6 +8,7 @@ judged on its own largest magnitude (a probe series per column). The memory
 planners estimate from the extents the step allocates.
 """
 
+import dataclasses
 import math
 import sys
 
@@ -16,11 +17,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation
+from rfx import Box, Cylinder, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.stepping import vector_pad
 from tests.unit.runners.test_vector_pad import (
-    RECORD_BAR, TARGETS, _ratio, _walls, assert_bars, assert_bitwise, assert_padded,
+    FREQS, N_STEPS, OBSERVED, RECORD_BAR, TARGETS, _ratio, _walls, assert_bars,
+    assert_bitwise, assert_padded, observed, run_record,
 )
 
 ADJOINT_STEPS = 160
@@ -32,6 +34,92 @@ NOT_BITWISE = {
     ('design face', 'autodiff', 'aligned'), ('design face', 'autodiff', 'odd'),
     ('vmap', 'pec', 'odd'),
 }
+
+
+COAX_TARGETS = ('aligned', 'odd', 'aligned_slow')
+
+
+def _coax_scene():
+    dx = .0005
+    sim = Simulation(freq_max=10e9, domain=(.0115, .0115, .052), dx=dx,
+                     boundary='cpml', cpml_layers=4, snap='declared')
+    disc = Cylinder(center=(.006, .006, .002 - dx / 2), radius=.0035, height=dx, axis='z')
+    sim.add(disc, material='pec')
+    sim.add_coaxial_port((.006, .006, .002), face='top', pin_length=dx, terminates=disc)
+    assert tuple(sim._build_grid().shape) == (32, 32, 113)
+    return sim
+
+
+def _coax_observed(result):
+    out = observed(result)
+    names = ([f.name for f in dataclasses.fields(result)] if dataclasses.is_dataclass(result)
+             else result._fields)
+    for name in names:
+        if name in OBSERVED or not (name.startswith('coax') or name == 'sparam_time_records'):
+            continue
+        for path, leaf in jax.tree_util.tree_leaves_with_path(getattr(result, name)):
+            if isinstance(leaf, (np.ndarray, jax.Array)) and np.issubdtype(np.asarray(leaf).dtype, np.number):
+                out[name + jax.tree_util.keystr(path)] = np.asarray(leaf)
+    return out
+
+
+def _coax_plans(plans, target):
+    assert_padded(plans, f'coax/{target}')
+    expected = (33, 33, 113) if target == 'odd' else (32, 32, 116)
+    assert all(p.shape == (32, 32, 113) and p.padded == expected for p in plans), plans
+    print(f'COAX PLAN {target}: {[(p.shape, p.padded) for p in plans]}', file=sys.stderr)
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_run_padded(target, monkeypatch):
+    from tests.unit.runners import test_vector_pad
+    monkeypatch.setattr(test_vector_pad, 'observed', _coax_observed)
+
+    def records(n):
+        ref, off = run_record(_coax_scene(), 'off', n_steps=n,
+                              compute_s_params=True, s_param_freqs=FREQS)
+        got, plans = run_record(_coax_scene(), target, n_steps=n,
+                                compute_s_params=True, s_param_freqs=FREQS)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        assert any(k.startswith('coax_port_metadata') for k in ref)
+        assert any(k.startswith('sparam_time_records') for k in ref)
+        return ref, got
+
+    judge(('coax', 'run', target), f'coax run/{target}', records, N_STEPS)
+    jax.clear_caches()
+
+
+def _coax_forward_records(target, n_steps):
+    sim = _coax_scene()
+    shape = sim._build_grid().shape
+
+    def objective(value):
+        rho = jnp.zeros(shape).at[18, 16, 7].set(value)
+        result = sim.forward(n_steps=n_steps, port_s11_freqs=FREQS,
+                             pec_occupancy_override=rho, skip_preflight=True)
+        return jnp.sum(jnp.abs(result.s_params) ** 2), result
+
+    value = jnp.asarray(.25)
+    with vector_pad.force_pad(target), vector_pad.record_plans() as plans:
+        loss, result = objective(value)
+        _, tangent = jax.jvp(lambda v: objective(v)[0], (value,), (jnp.ones_like(value),))
+        gradient = jax.grad(lambda v: objective(v)[0])(value)
+    return dict(_coax_observed(result), value=np.asarray(loss),
+                jvp=np.asarray(tangent), grad=np.asarray(gradient)), plans
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_forward_value_jvp_grad_padded(target):
+    def records(n):
+        ref, off = _coax_forward_records('off', n)
+        got, plans = _coax_forward_records(target, n)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        return ref, got
+
+    judge(('coax', 'forward', target), f'coax forward/{target}', records, N_STEPS)
+    jax.clear_caches()
 
 
 def own_scale_ratios(ref, got, peaks=None):

@@ -154,5 +154,70 @@ raise SystemExit(pytest.main(['tests/contracts/test_coax_port_s.py', '-q', '-o',
         assert ('AssertionError' if mutation in ('bprime', 'wave_b') else 'NoneType') in result.stdout
 
 
+VECTOR_PAD_MUTATIONS = (
+    ('pin-no-spectrum-rule', 'tests/unit/runners/test_vector_pad_paths.py',
+     'test_coax_port_run_padded', '''
+from rfx.stepping import vector_pad
+vector_pad._CARRY_PASS = vector_pad._CARRY_PASS - {'coax_sparam_accs'}
+''', "carry entry 'coax_sparam_accs' has no pad rule", 3),
+    ('pin-high-end-view', 'tests/unit/runners/test_vector_pad_paths.py',
+     'test_coax_port_run_padded', '''
+from pathlib import Path
+import rfx.stepping.uniform as uniform
+def high_view(state, plan):
+    if plan is None:
+        return state
+    slices = tuple(slice(p, p+n) for n, p in zip(plan.shape, plan.pad))
+    return state._replace(**{c: getattr(state, c)[slices]
+                             for c in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')})
+uniform._mutant_high_view = high_view
+source = Path(uniform.__file__).read_text()
+old = 'update_coax(frame.carry, view(frame.st),'
+assert source.count(old) == 1
+source = source.replace(old, 'update_coax(frame.carry, _mutant_high_view(frame.st, pad_plan),')
+exec(compile(source, uniform.__file__, 'exec'), uniform.__dict__)
+''', 'not bitwise', 3),
+    ('contract-no-record-rule', 'tests/contracts/test_vector_pad_carry_rules.py',
+     'test_vector_pad_carry_rules', '''
+from rfx.stepping import vector_pad
+vector_pad._CARRY_PASS = vector_pad._CARRY_PASS - {'coax_time_records'}
+''', 'AssertionError: coax_time_records', 1),
+    ('contract-new-entry', 'tests/contracts/test_vector_pad_carry_rules.py',
+     'test_vector_pad_carry_rules', '''
+from pathlib import Path
+original = Path.read_text
+def extra_key(path, *args, **kwargs):
+    source = original(path, *args, **kwargs)
+    if str(path).endswith('/rfx/measurement/coax_port.py'):
+        old = "    dtype = carry['fdtd'].ex.dtype"
+        assert source.count(old) == 1
+        source = source.replace(old, "    carry['coax_extra'] = 0\\n" + old)
+    return source
+Path.read_text = extra_key
+''', 'coax_extra', 1),
+)
+
+
+def run_vector_pad_mutation(row):
+    name, path, selection, changes, message, failures = row
+    command = changes + f'''
+import pytest
+raise SystemExit(pytest.main([{path!r}, '-q', '-s', '-o', 'addopts=', '-k', {selection!r}]))
+'''
+    result = subprocess.run([sys.executable, '-c', command], capture_output=True, text=True,
+                            env=dict(os.environ, PYTEST_ADDOPTS=''))
+    print(f'VECTOR PAD MUTATION {name}: exit={result.returncode}', file=sys.stderr)
+    print(result.stdout + result.stderr, file=sys.stderr)
+    assert result.returncode == 1, name
+    assert message in result.stdout, name
+    assert f'{failures} failed' in result.stdout, name
+    if selection == 'test_coax_port_run_padded':
+        for target in ('aligned', 'odd', 'aligned_slow'):
+            assert f'test_coax_port_run_padded[{target}]' in result.stdout, (name, target)
+        if name == 'pin-high-end-view':
+            assert 'coax_port_metadata' in result.stdout, name
+            assert 'sparam_time_records' in result.stdout, name
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q", "-s", "-o", "addopts="]))

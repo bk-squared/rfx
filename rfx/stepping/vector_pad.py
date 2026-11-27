@@ -369,7 +369,7 @@ def unpad_pole_tree(tree, plan):
 _CARRY_PASS = frozenset({
     "ntff", "current_moments", "dft_planes", "flux_monitors", "waveguide_port_accs",
     "wire_sparam_accs", "lumped_sparam_accs", "wire_refplane_accs", "rlc_states",
-    "dft_time_records", "sparam_time_records"})
+    "dft_time_records", "sparam_time_records", "coax_sparam_accs", "coax_time_records"})
 
 
 def pad_carry(carry, plan):
