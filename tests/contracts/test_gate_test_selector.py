@@ -897,7 +897,7 @@ def test_local_shell_passes_selected_node_ids_unchanged(tmp_path):
     node = "tests/unit/test_scan.py::TestScanner::test_scan"
     (tmp_path / "files").write_text(node + "\n")
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("selected_tests=()", 1)[1]
-    read_array = "selected_tests=()" + stage.split("# Bash 3.2", 1)[0]
+    read_array = "selected_tests=()" + stage.split("stage2_worker_args=()", 1)[0]
     result = subprocess.run(
         ["bash", "-uc", 'selection_dir="$1"\n' + read_array
          + 'stage2_pytest() { printf "%s\\n" "${@:2}"; }\n'
