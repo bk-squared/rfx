@@ -2,12 +2,13 @@
 
 Each path pads by the stepping layer (``rfx.stepping.vector_pad``) and must
 return the unpadded run's bytes on the CPU, or, for a case listed in
-``NOT_BITWISE`` (measured not bitwise), stay within bar (ii) of
+``NOT_BITWISE`` (measured not bitwise on at least one platform), stay within bar (ii) of
 ``tests/unit/runners/test_vector_pad.py`` at N, 2N and 4N steps, each output
 judged on its own largest magnitude (a probe series per column). The memory
 planners estimate from the extents the step allocates.
 """
 
+import dataclasses
 import math
 import sys
 
@@ -16,11 +17,12 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation
+from rfx import Box, Cylinder, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.stepping import vector_pad
 from tests.unit.runners.test_vector_pad import (
-    RECORD_BAR, TARGETS, _ratio, _walls, assert_bars, assert_bitwise, assert_padded,
+    FREQS, N_STEPS, OBSERVED, RECORD_BAR, TARGETS, _ratio, _walls, assert_bars,
+    assert_bitwise, assert_padded, observed, run_record,
 )
 
 ADJOINT_STEPS = 160
@@ -31,7 +33,164 @@ NOT_BITWISE = {
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
     ('design face', 'autodiff', 'aligned'), ('design face', 'autodiff', 'odd'),
     ('vmap', 'pec', 'odd'),
+    ('coax', 'forward', 'odd'),
 }
+
+
+COAX_TARGETS = ('aligned', 'odd', 'aligned_slow')
+COAX_STEPS = 300
+
+
+def _coax_scene():
+    dx = .0005
+    sim = Simulation(freq_max=10e9, domain=(.0115, .0115, .052), dx=dx,
+                     boundary='cpml', cpml_layers=4, snap='declared')
+    disc = Cylinder(center=(.006, .006, .002 - dx / 2), radius=.0035, height=dx, axis='z')
+    sim.add(disc, material='pec')
+    sim.add_coaxial_port((.006, .006, .002), face='top', pin_length=dx, terminates=disc)
+    assert tuple(sim._build_grid().shape) == (32, 32, 113)
+    return sim
+
+
+def _coax_observed(result):
+    out = observed(result)
+    names = ([f.name for f in dataclasses.fields(result)] if dataclasses.is_dataclass(result)
+             else result._fields)
+    for name in names:
+        if name in OBSERVED or not (name.startswith('coax') or name == 'sparam_time_records'):
+            continue
+        for path, leaf in jax.tree_util.tree_leaves_with_path(getattr(result, name)):
+            if isinstance(leaf, (np.ndarray, jax.Array)) and np.issubdtype(np.asarray(leaf).dtype, np.number):
+                out[name + jax.tree_util.keystr(path)] = np.asarray(leaf)
+    return out
+
+
+def _coax_plans(plans, target):
+    assert_padded(plans, f'coax/{target}')
+    expected = (33, 33, 113) if target == 'odd' else (32, 32, 116)
+    assert all(p.shape == (32, 32, 113) and p.padded == expected for p in plans), plans
+    print(f'COAX PLAN {target}: {[(p.shape, p.padded) for p in plans]}', file=sys.stderr)
+
+
+def _coax_arrival(result, label):
+    samples = [np.asarray(r.samples) for r in result.sparam_time_records or ()
+               if r.kind == 'coax']
+    assert samples, f'{label}: no coaxial time records'
+    peak = max(float(np.abs(a).max()) for a in samples)
+    first60 = max(float(np.abs(a[:60]).max()) for a in samples)
+    ratio = _ratio(peak, first60)
+    print(f'COAX ARRIVAL {label}: P={peak!r} P60={first60!r} P/P60={ratio!r}',
+          file=sys.stderr)
+    assert ratio >= 1e6, f'{label}: coax arrival P/P60={ratio!r} < 1e6'
+
+
+def _coax_run_record(target, n_steps, **extra):
+    from tests.unit.runners import test_vector_pad
+    results = []
+
+    def collect(result):
+        results.append(result)
+        assert np.isfinite(np.asarray(result.s_params)).all(), 'coax s_params not finite'
+        return _coax_observed(result)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(test_vector_pad, 'observed', collect)
+        out, plans = run_record(_coax_scene(), target, n_steps=n_steps,
+                                compute_s_params=True, s_param_freqs=FREQS, **extra)
+    return out, plans, results[0]
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_run_padded(target):
+
+    def records(n):
+        ref, off, result = _coax_run_record('off', n)
+        _coax_arrival(result, f'run/{target} N={n} source=run().sparam_time_records')
+        got, plans, _ = _coax_run_record(target, n)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        assert any(k.startswith('coax_port_metadata') for k in ref)
+        assert any(k.startswith('sparam_time_records') for k in ref)
+        return ref, got
+
+    judge(('coax', 'run', target), f'coax run/{target}', records, COAX_STEPS)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_until_decay_padded(target, monkeypatch):
+    import inspect
+    calls = []
+    real = vector_pad.pad_carry
+
+    def pad_carry(*args, **kwargs):
+        caller = inspect.currentframe().f_back
+        calls.append((caller.f_code.co_filename, caller.f_lineno))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(vector_pad, 'pad_carry', pad_carry)
+
+    def records(n):
+        kwargs = dict(until_decay=1e-3, decay_check_interval=50,
+                      decay_min_steps=200, decay_max_steps=n)
+        ref, off, result = _coax_run_record('off', n, **kwargs)
+        _coax_arrival(result, f'until_decay/{target} source=run().sparam_time_records')
+        got, plans, padded = _coax_run_record(target, n, **kwargs)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        steps, padded_steps = result.time_series.shape[0], padded.time_series.shape[0]
+        stop, = (d for d in result.diagnostics if d.code == 'until_decay.stop')
+        print(f'COAX DECAY {target}: steps={steps} padded_steps={padded_steps} '
+              f'criterion={stop.values["criterion"]} stop_step={stop.values["stop_step"]} '
+              f'pad_carry={calls} snapshot={result.snapshots is not None}', file=sys.stderr)
+        assert steps == padded_steps
+        return ref, got
+
+    judge(('coax', 'until_decay', target), f'coax until_decay/{target}', records, 600)
+    jax.clear_caches()
+
+
+def _coax_forward_records(target, n_steps):
+    sim = _coax_scene()
+    shape = sim._build_grid().shape
+
+    def objective(value):
+        rho = jnp.zeros(shape).at[18, 16, 7].set(value)
+        result = sim.forward(n_steps=n_steps, port_s11_freqs=FREQS,
+                             pec_occupancy_override=rho, skip_preflight=True)
+        return jnp.sum(jnp.abs(result.s_params) ** 2), result
+
+    value = jnp.asarray(.25)
+    with vector_pad.force_pad(target), vector_pad.record_plans() as plans:
+        loss, result = objective(value)
+        _, tangent = jax.jvp(lambda v: objective(v)[0], (value,), (jnp.ones_like(value),))
+        gradient = jax.grad(lambda v: objective(v)[0])(value)
+    return dict(_coax_observed(result), value=np.asarray(loss),
+                jvp=np.asarray(tangent), grad=np.asarray(gradient)), plans, result
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_forward_value_jvp_grad_padded(target):
+    def records(n):
+        ref, off, result = _coax_forward_records('off', n)
+        source = 'forward().sparam_time_records'
+        if not any(r.kind == 'coax' for r in result.sparam_time_records or ()):
+            _, _, result = _coax_run_record('off', n)
+            source = 'run().sparam_time_records'
+        _coax_arrival(result, f'forward/{target} N={n} source={source}')
+        for key in ('value', 'jvp', 'grad'):
+            print(f'COAX DERIVATIVE {target} N={n} off {key}={ref[key]!r}', file=sys.stderr)
+            assert np.isfinite(ref[key]).all() and np.all(ref[key] != 0), (target, n, 'off', key)
+        got, plans, _ = _coax_forward_records(target, n)
+        for key in ('value', 'jvp', 'grad'):
+            print(f'COAX DERIVATIVE {target} N={n} padded {key}={got[key]!r}', file=sys.stderr)
+            assert np.isfinite(got[key]).all() and np.all(got[key] != 0), (target, n, 'padded', key)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        return ref, got
+
+    judge(('coax', 'forward', target), f'coax forward/{target}', records, COAX_STEPS)
+    jax.clear_caches()
 
 
 def own_scale_ratios(ref, got, peaks=None):
