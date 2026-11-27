@@ -5,6 +5,24 @@ from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import numpy as np
+import re
+
+
+def _memory_only_reason(reason: str) -> bool:
+    refusal = re.compile(
+        r"(?:[^;]*: )?identification would need .*?"
+        r"or raise rfx\.ringdown\.IDENTIFY_MEMORY_BOUND_BYTES")
+    while reason:
+        match = refusal.match(reason)
+        if match is None:
+            return False
+        reason = reason[match.end():]
+        if not reason:
+            return True
+        if not reason.startswith("; "):
+            return False
+        reason = reason[2:]
+    return False
 
 
 def _warn_if_ringdown_truncated(
@@ -63,20 +81,19 @@ def _warn_if_ringdown_truncated(
     poles = merge_growing_poles(*(witnesses[i].get('growing_poles', ())
                                  for i in np.flatnonzero(hot)
                                  if witnesses is not None and i < len(witnesses)))
-    all_unknown = bool(np.all(unknown[hot]))
-    consequence_text = f" {consequence}." if consequence and not all_unknown else ""
+    memory_only = bool(np.all(unknown[hot])) and not poles and all(
+        witnesses[i]['status'] == 'undetermined'
+        and _memory_only_reason(witnesses[i]['reason'])
+        for i in np.flatnonzero(hot))
+    consequence_text = f" {consequence}." if consequence and not memory_only else ""
     if not poles and any(not unknown[i] for i in np.flatnonzero(hot)):
         consequence_text += " A failing record-end witness means lengthen the record."
     memory_refused = witnesses is not None and any(
         unknown[i] and 'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
         for i in np.flatnonzero(hot))
     verdict = "NOT PASSED"
-    if all_unknown:
-        verdict = "cannot judge"
-        if not poles and all(
-                'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
-                for i in np.flatnonzero(hot)):
-            verdict += " (identification not run)"
+    if memory_only:
+        verdict = "cannot judge (identification refused by the memory bound)"
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())

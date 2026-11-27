@@ -356,7 +356,7 @@ def test_two_different_z_meshes_change_the_answer():
 def test_dz_only_short_run_fires_the_settling_witness():
     """A truncated dz-only run reports an unavailable post-source witness."""
     sim = _dz_only_wg(_DZ_WR90_A)
-    with pytest.warns(UserWarning, match="ring-down settling witness cannot judge"):
+    with pytest.warns(UserWarning, match="ring-down settling witness NOT PASSED"):
         res = sim.compute_waveguide_s_matrix(num_periods=2, normalize="flux")
     assert res.settling_db is not None, (
         "NU lane returned settling_db=None — the #827 witness gap is back")

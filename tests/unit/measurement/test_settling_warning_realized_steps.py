@@ -22,7 +22,7 @@ def test_until_decay_warning_names_realized_record_length():
     assert realized != planned
     messages = [str(w.message) for w in caught
                 if issubclass(w.category, AccuracyWarning)
-                and str(w.message).startswith("ring-down settling witness cannot judge")]
+                and str(w.message).startswith("ring-down settling witness NOT PASSED")]
     assert messages, [str(w.message) for w in caught]
     for message in messages:
         count = re.search(r"\bn_steps=(\d+)\b", message)

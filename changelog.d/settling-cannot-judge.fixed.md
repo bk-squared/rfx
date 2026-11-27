@@ -1,6 +1,7 @@
-### Fixed — settling warnings say when they cannot judge (#PR)
+### Fixed — settling warnings identify memory refusals (#PR)
 
-- When every reported settling row is unknown, the warning says "cannot judge"
-  and omits the truncation consequence. Memory refusals without growing poles
-  also say "identification not run" and retain the identification remedies.
-- Warnings with a real failure keep their existing text. No number or verdict changes.
+- When every reported row is undetermined only because pole identification was
+  refused by `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES`, the warning reads
+  "cannot judge (identification refused by the memory bound)" instead of
+  "NOT PASSED" and no longer says truncation is suspect. The memory remedies stay.
+- Every other warning keeps its text. No number or verdict changes.
