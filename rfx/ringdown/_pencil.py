@@ -52,9 +52,12 @@ class IdentificationMemoryRefused(RfxRefusal):
     def _mark_unresolved(self, cause, block):
         """Attach partial-method metadata inside the existing memory span."""
         self.unresolved, self.cause, self.block = True, cause, block
-        clause = ("the partial SVD reached the full SVD's operation count"
-                  if cause != "block" else
-                  f"a partial-SVD block of b={block} exceeded the bound")
+        if cause == "linalg":
+            clause = "the partial SVD stopped on a LAPACK error"
+        elif cause == "block":
+            clause = f"a partial-SVD block of b={block} exceeded the bound"
+        else:
+            clause = "the partial SVD reached the full SVD's operation count"
         self.args = (self.args[0].replace(
             "(pencil;", f"(pencil, full-SVD fallback after {clause};"),)
 

@@ -6,6 +6,7 @@ import sys
 
 import numpy as np
 import pytest
+from scipy.optimize import linear_sum_assignment
 
 from rfx import ringdown as rd
 from rfx.measurement import _hankel_svd as hs
@@ -145,7 +146,7 @@ def test_T4_cost_stop_and_bit_exact_fallback(monkeypatch, wide):
         np.testing.assert_array_equal(a, e)
 
 
-@pytest.mark.parametrize('cause', ['count', 'block'])
+@pytest.mark.parametrize('cause', ['count', 'block', 'linalg'])
 def test_T5_unresolved_refusal_and_pickle(monkeypatch, cause):
     y = noise_window(wide=cause == 'count')
     if cause == 'count':
@@ -154,6 +155,19 @@ def test_T5_unresolved_refusal_and_pickle(monkeypatch, cause):
     rows, width = len(y) - columns, columns*y.shape[1]
     k = min(rows, width)
     needed = 1.87*16*(3*rows*width + rows*k + 2*k*width + 4*k*k)
+    if cause == 'linalg':
+        expected = core_pencil(y, 1e-6, 1e-6, pencil_parameter=rd.PENCIL_PARAMETER)
+        original_svd = np.linalg.svd
+        calls = 0
+
+        def fail_once(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise np.linalg.LinAlgError('small SVD failed')
+            return original_svd(*args, **kwargs)
+
+        monkeypatch.setattr(np.linalg, 'svd', fail_once)
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', needed - 1)
     with pytest.raises(rd.IdentificationMemoryRefused) as caught:
         rd._pencil(y, 1e-6, 1e-6, svd='partial', n_win=len(y))
@@ -161,7 +175,8 @@ def test_T5_unresolved_refusal_and_pickle(monkeypatch, cause):
     assert exc.unresolved and exc.stage == 1
     assert exc.needed_bytes == needed
     assert exc.cause == cause
-    clause = ("the partial SVD reached the full SVD's operation count" if cause == 'count'
+    clause = ("the partial SVD stopped on a LAPACK error" if cause == 'linalg' else
+              "the partial SVD reached the full SVD's operation count" if cause == 'count'
               else f"a partial-SVD block of b={exc.block} exceeded the bound")
     assert clause in str(exc)
     assert _memory_only_reason(str(exc))
@@ -169,6 +184,13 @@ def test_T5_unresolved_refusal_and_pickle(monkeypatch, cause):
     assert str(restored) == str(exc)
     assert restored.unresolved == exc.unresolved
     assert restored.cause == exc.cause and restored.block == exc.block
+    if cause == 'linalg':
+        calls = 0
+        monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', needed + 1)
+        actual = rd._pencil(y, 1e-6, 1e-6, svd='partial', n_win=len(y))
+        assert calls == 2
+        for a, e in zip(actual, expected):
+            np.testing.assert_array_equal(a, e)
 
 
 def test_T6_deterministic_identification_and_settling(monkeypatch):
@@ -224,9 +246,55 @@ def test_T7_settling_uses_partial_below_full_memory_bound(monkeypatch):
         assert partial_charge < bound < full_charge
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
     result = tw.tail_share_witness([('mode', y)], 1., 0, [.1], freq_max=.49)
+    assert result.status in ('pass', 'fail')
     assert 'identification would need ' not in result.reason
     with pytest.raises(rd.IdentificationMemoryRefused) as caught:
         rd.identify(y, 1., n_record // 2, n_record, freq_max=.49)
     assert caught.value.stage == 1
     assert caught.value.needed_bytes == full_charges[0]
     assert not caught.value.unresolved
+
+
+def test_T8_certified_partial_poles():
+    """Certified multi-channel poles meet B2 against independently perturbed full runs.
+
+    A successful core tuple denotes certified; unresolved cores return a cause.
+    This window needs no decimation, so recorded and decimated samples coincide.
+    """
+    rng = np.random.default_rng(0)
+    t = np.arange(768)[:, None]
+    poles = -np.array([.001, .002, .003, .004, .005, .006]) + 2j*np.pi*np.array(
+        [.05, .1, .15, .2, .25, .3])
+    coefficients = rng.standard_normal((6, 3)) + 1j*rng.standard_normal((6, 3))
+    y = np.exp(t*poles) @ coefficients
+    y += 1e-9*np.max(np.abs(y))*(rng.standard_normal(y.shape) + 1j*rng.standard_normal(y.shape))
+    kw = dict(freq_max=.49, guard=None)
+    partial = rd._identify(y, 1., 0, len(y), svd='partial', **kw)
+    full = rd._identify(y, 1., 0, len(y), svd='full', **kw)
+    assert partial.D == full.D == 1
+    partial_core = core_pencil(y, 1e-6, 1e-6, pencil_parameter=rd.PENCIL_PARAMETER,
+                               svd='partial', fits=lambda b: True)
+    cause = partial_core.cause if isinstance(partial_core, hs._PartialSVD) else 'certified'
+    assert cause == 'certified'
+    full_core = core_pencil(y, 1e-6, 1e-6, pencil_parameter=rd.PENCIL_PARAMETER)
+    assert partial_core[1] == full_core[1] == 6
+    lam_full, lam_partial = np.exp(full.s), np.exp(partial.s)
+    assert len(lam_partial) == len(lam_full) == 6
+    sigma = np.zeros(len(lam_full))
+    for seed in range(1, 6):
+        perturbation = np.random.default_rng(seed)
+        g = perturbation.standard_normal(y.shape) + 1j*perturbation.standard_normal(y.shape)
+        perturbed = rd._identify(y + 2.**-52*g, 1., 0, len(y), svd='full', **kw)
+        lam_perturbed = np.exp(perturbed.s)
+        assert len(lam_perturbed) == len(lam_full)
+        rows, cols = linear_sum_assignment(np.abs(lam_full[:, None] - lam_perturbed))
+        sigma[rows] = np.maximum(sigma[rows], np.abs(lam_full[rows] - lam_perturbed[cols]))
+    normalized = y/np.sqrt(np.mean(np.abs(y)**2, axis=0))
+    eps = np.finfo(np.float64).eps
+    c = 2*np.sqrt(2)*rounding(normalized)/(eps*partial.singular_values[0])
+    rows, cols = linear_sum_assignment(np.abs(lam_full[:, None] - lam_partial))
+    delta = np.abs(lam_full[rows] - lam_partial[cols])
+    bars = 2*c*np.maximum(sigma[rows], eps*np.abs(lam_full[rows]))
+    for index, difference, bar in zip(rows, delta, bars):
+        print(f'T8 pair {index}: delta={difference:.17g}, bar={bar:.17g}', file=sys.stderr)
+    assert np.all(delta <= bars)

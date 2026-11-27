@@ -69,6 +69,7 @@ def test_T2_two_rows_multiple_groups():
 @pytest.mark.parametrize('clause', [
     "the partial SVD reached the full SVD's operation count",
     "a partial-SVD block of b=64 exceeded the bound",
+    "the partial SVD stopped on a LAPACK error",
 ])
 def test_partial_fallback_memory_refusal(clause):
     reason = STAGE1.replace('(pencil;', f'(pencil, full-SVD fallback after {clause};')

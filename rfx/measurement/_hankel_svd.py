@@ -71,7 +71,8 @@ class _PartialSVD:
     """Certification result, including the cost-stop audit at return.
 
     A nonempty cause is unresolved: count for a prohibited cost step,
-    block for a memory admission failure, or b>k for a prohibited doubling.
+    block for a memory admission failure, b>k for a prohibited doubling,
+    or linalg for a QR or small-SVD LAPACK error.
     Only the ringdown wrapper may decide fallback or raise a refusal.
     """
 
@@ -138,7 +139,11 @@ def _partial_svd(y, columns, sv_rel, fits: Callable[[int], bool]):
         rng = np.random.default_rng(0)
         omega = (rng.standard_normal((width, b))
                  + 1j*rng.standard_normal((width, b))) / np.sqrt(2)
-        qblock = _orthonormalize(op.product(omega))
+        try:
+            qblock = _orthonormalize(op.product(omega))
+        except np.linalg.LinAlgError:
+            result.cause = "linalg"
+            return result
         del omega
         result.q = 0
         while True:
@@ -146,7 +151,11 @@ def _partial_svd(y, columns, sv_rel, fits: Callable[[int], bool]):
                 if not charge(op.product_cost(b) + 4*(6*width*b*b + 20*b**3)):
                     return result
                 small = op.product(qblock, adjoint=True).conj().T
-                ub, s, vh = np.linalg.svd(small, full_matrices=False)
+                try:
+                    ub, s, vh = np.linalg.svd(small, full_matrices=False)
+                except np.linalg.LinAlgError:
+                    result.cause = "linalg"
+                    return result
                 del small
                 if not s[0] > 0:
                     raise ValueError("the stacked Hankel matrix of the window is zero")
@@ -176,7 +185,11 @@ def _partial_svd(y, columns, sv_rel, fits: Callable[[int], bool]):
             cost = 2*op.product_cost(b) + _qr_cost(width, b) + _qr_cost(rows, b)
             if not charge(cost):
                 return result
-            w = _orthonormalize(op.product(qblock, adjoint=True))
-            qblock = _orthonormalize(op.product(w))
+            try:
+                w = _orthonormalize(op.product(qblock, adjoint=True))
+                qblock = _orthonormalize(op.product(w))
+            except np.linalg.LinAlgError:
+                result.cause = "linalg"
+                return result
             del w
             result.q += 1
