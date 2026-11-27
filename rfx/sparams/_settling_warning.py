@@ -63,12 +63,20 @@ def _warn_if_ringdown_truncated(
     poles = merge_growing_poles(*(witnesses[i].get('growing_poles', ())
                                  for i in np.flatnonzero(hot)
                                  if witnesses is not None and i < len(witnesses)))
-    consequence_text = f" {consequence}." if consequence else ""
+    all_unknown = bool(np.all(unknown[hot]))
+    consequence_text = f" {consequence}." if consequence and not all_unknown else ""
     if not poles and any(not unknown[i] for i in np.flatnonzero(hot)):
         consequence_text += " A failing record-end witness means lengthen the record."
     memory_refused = witnesses is not None and any(
         unknown[i] and 'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
         for i in np.flatnonzero(hot))
+    verdict = "NOT PASSED"
+    if all_unknown:
+        verdict = "cannot judge"
+        if not poles and all(
+                'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
+                for i in np.flatnonzero(hot)):
+            verdict += " (identification not run)"
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
@@ -92,7 +100,7 @@ def _warn_if_ringdown_truncated(
             f"Growing poles (largest growth first): {named}. "
             "No passing value witness supports quoting ")
     warnings.warn(
-        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
+        f"ring-down settling witness {verdict} (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         f"record has no passing value witness.{consequence_text} {advice}"
         f"{quoted_thing} (see the result's settling_db and settling_witness fields)."

@@ -659,7 +659,7 @@ def test_undetermined_warning_without_growth_keeps_exact_text(poles):
         [np.nan], ('feed',), n_steps=400, witnesses=[row]))
     assert len(hot) == 1
     assert str(hot[0].message) == (
-        'ring-down settling witness NOT PASSED (pole-tail amplitude threshold '
+        'ring-down settling witness cannot judge (pole-tail amplitude threshold '
         '-40 dB): port feed driven: undetermined (source end is unavailable). '
         'The n_steps=400 record has no passing value witness. '
         'Increase n_steps and check identification before quoting any S value '
@@ -685,7 +685,10 @@ def test_growing_warning_caps_sorted_poles_and_preserves_output_context(status, 
     assert message.index('4 GHz') < message.index('3 GHz') < message.index('2 GHz')
     assert '1 GHz' not in message
     assert 'and 1 more' in message
-    assert 'DFT truncation is suspect.' in message
+    if status == 'undetermined':
+        assert 'DFT truncation is suspect.' not in message
+    else:
+        assert 'DFT truncation is suspect.' in message
     assert 'quoting a DFT value' in message
     assert message.endswith(' Outputs read from this record: DFT planes.')
     for text in ('Increase n_steps', 'Increase num_periods', 'lengthen the record',
