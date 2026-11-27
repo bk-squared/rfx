@@ -31,7 +31,7 @@ RULES = {
     'coax_time_records': ('pass', ''),
     'tfsf': ('refused', 'TFSF plane-wave source'),
     'wire_sparams': ('unpadded path',
-                     'graded_accumulators: graded_setup.build_graded_setup; slab_ports.setup_ports'),
+                     'graded_accumulators: graded_setup._build_nu_scan; slab_ports.setup_ports'),
 }
 
 
