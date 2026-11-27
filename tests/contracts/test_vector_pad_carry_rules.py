@@ -86,6 +86,7 @@ def test_vector_pad_carry_rules():
                  use_sheet_impedance=False, use_design_occupancy=False,
                  materials=SimpleNamespace(components=SimpleNamespace(tensor=None)))
     refused = vector_pad.uniform_unsupported(flags, stencil_order=2, field_dtype=np.float32)
+    padded = padded_keys('pad_carry')
     for key, (rule, reason) in RULES.items():
         assert rule in ('padded', 'pass', 'refused', 'unpadded path')
         if rule == 'pass':
@@ -93,7 +94,7 @@ def test_vector_pad_carry_rules():
         elif rule == 'refused':
             assert reason in refused, (key, reason, refused)
         elif rule == 'padded':
-            assert key in ('fdtd', 'cpml', 'debye', 'lorentz')
+            assert key in padded, key
         else:
             assert reason
 
@@ -103,7 +104,7 @@ INVARIANT_RULES = {
     'magnetic_factors': ('padded', ''),
     'h_row_factors': ('padded', ''),
     'cpml_inv_eps_r': ('padded', ''),
-    'sheet_coeffs': ('padded', ''),
+    'sheet_coeffs': ('refuses', 'surface-impedance sheets'),
     'e_loss': ('padded', ''),
     'conformal_zero_masks': ('padded', ''),
     'probe_table': ('pass', ''),
@@ -165,10 +166,10 @@ def invariant_keys():
     return found
 
 
-def padded_invariant_keys():
+def padded_keys(name):
     tree = ast.parse((ROOT / 'rfx/stepping/vector_pad.py').read_text())
     function, = (node for node in tree.body
-                 if isinstance(node, ast.FunctionDef) and node.name == 'pad_invariants')
+                 if isinstance(node, ast.FunctionDef) and node.name == name)
     found = set()
     for node in ast.walk(function):
         if not (isinstance(node, ast.Compare) and isinstance(node.left, ast.Name)
@@ -189,12 +190,18 @@ def test_vector_pad_invariant_rules():
     print(f'VECTOR PAD INVARIANT KEYS {sorted(found)}', file=sys.stderr)
     assert found == INVARIANT_RULES.keys(), (found - INVARIANT_RULES.keys(),
                                           INVARIANT_RULES.keys() - found)
-    padded = padded_invariant_keys()
+    padded = padded_keys('pad_invariants')
     for key, (rule, reason) in INVARIANT_RULES.items():
-        assert rule in ('padded', 'pass', 'unpadded path')
+        assert rule in ('padded', 'pass', 'refuses', 'unpadded path')
         if rule == 'padded':
             assert key in padded, key
         elif rule == 'pass':
             assert key in vector_pad._INVARIANT_PASS, key
+        elif rule == 'refuses':
+            plan = vector_pad.plan_pad((4, 4, 5), target='aligned',
+                                       periodic_axes=(False, False, False))
+            with pytest.raises(NotImplementedError, match=reason):
+                vector_pad.pad_invariants({key: object()}, plan)
+            assert vector_pad.pad_invariants({key: None}, plan) == {key: None}
         else:
             assert reason

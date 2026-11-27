@@ -33,10 +33,12 @@ NOT_BITWISE = {
     ('design', 'autodiff', 'aligned'), ('design', 'autodiff', 'odd'),
     ('design face', 'autodiff', 'aligned'), ('design face', 'autodiff', 'odd'),
     ('vmap', 'pec', 'odd'),
+    ('coax', 'forward', 'odd'),
 }
 
 
 COAX_TARGETS = ('aligned', 'odd', 'aligned_slow')
+COAX_STEPS = 300
 
 
 def _coax_scene():
@@ -70,23 +72,81 @@ def _coax_plans(plans, target):
     print(f'COAX PLAN {target}: {[(p.shape, p.padded) for p in plans]}', file=sys.stderr)
 
 
-@pytest.mark.parametrize('target', COAX_TARGETS)
-def test_coax_port_run_padded(target, monkeypatch):
+def _coax_arrival(result, label):
+    samples = [np.asarray(r.samples) for r in result.sparam_time_records or ()
+               if r.kind == 'coax']
+    assert samples, f'{label}: no coaxial time records'
+    peak = max(float(np.abs(a).max()) for a in samples)
+    first60 = max(float(np.abs(a[:60]).max()) for a in samples)
+    ratio = _ratio(peak, first60)
+    print(f'COAX ARRIVAL {label}: P={peak!r} P60={first60!r} P/P60={ratio!r}',
+          file=sys.stderr)
+    assert ratio >= 1e6, f'{label}: coax arrival P/P60={ratio!r} < 1e6'
+
+
+def _coax_run_record(target, n_steps, **extra):
     from tests.unit.runners import test_vector_pad
-    monkeypatch.setattr(test_vector_pad, 'observed', _coax_observed)
+    results = []
+
+    def collect(result):
+        results.append(result)
+        assert np.isfinite(np.asarray(result.s_params)).all(), 'coax s_params not finite'
+        return _coax_observed(result)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(test_vector_pad, 'observed', collect)
+        out, plans = run_record(_coax_scene(), target, n_steps=n_steps,
+                                compute_s_params=True, s_param_freqs=FREQS, **extra)
+    return out, plans, results[0]
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_run_padded(target):
 
     def records(n):
-        ref, off = run_record(_coax_scene(), 'off', n_steps=n,
-                              compute_s_params=True, s_param_freqs=FREQS)
-        got, plans = run_record(_coax_scene(), target, n_steps=n,
-                                compute_s_params=True, s_param_freqs=FREQS)
+        ref, off, result = _coax_run_record('off', n)
+        _coax_arrival(result, f'run/{target} N={n} source=run().sparam_time_records')
+        got, plans, _ = _coax_run_record(target, n)
         assert off and not any(p.active for p in off)
         _coax_plans(plans, target)
         assert any(k.startswith('coax_port_metadata') for k in ref)
         assert any(k.startswith('sparam_time_records') for k in ref)
         return ref, got
 
-    judge(('coax', 'run', target), f'coax run/{target}', records, N_STEPS)
+    judge(('coax', 'run', target), f'coax run/{target}', records, COAX_STEPS)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize('target', COAX_TARGETS)
+def test_coax_port_until_decay_padded(target, monkeypatch):
+    import inspect
+    calls = []
+    real = vector_pad.pad_carry
+
+    def pad_carry(*args, **kwargs):
+        caller = inspect.currentframe().f_back
+        calls.append((caller.f_code.co_filename, caller.f_lineno))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(vector_pad, 'pad_carry', pad_carry)
+
+    def records(n):
+        kwargs = dict(until_decay=1e-3, decay_check_interval=50,
+                      decay_min_steps=200, decay_max_steps=600)
+        ref, off, result = _coax_run_record('off', n, **kwargs)
+        _coax_arrival(result, f'until_decay/{target} source=run().sparam_time_records')
+        got, plans, padded = _coax_run_record(target, n, **kwargs)
+        assert off and not any(p.active for p in off)
+        _coax_plans(plans, target)
+        steps, padded_steps = result.time_series.shape[0], padded.time_series.shape[0]
+        stop, = (d for d in result.diagnostics if d.code == 'until_decay.stop')
+        print(f'COAX DECAY {target}: steps={steps} padded_steps={padded_steps} '
+              f'criterion={stop.values["criterion"]} stop_step={stop.values["stop_step"]} '
+              f'pad_carry={calls} snapshot={result.snapshots is not None}', file=sys.stderr)
+        assert steps == padded_steps
+        return ref, got
+
+    judge(('coax', 'until_decay', target), f'coax until_decay/{target}', records, 600)
     jax.clear_caches()
 
 
@@ -106,19 +166,30 @@ def _coax_forward_records(target, n_steps):
         _, tangent = jax.jvp(lambda v: objective(v)[0], (value,), (jnp.ones_like(value),))
         gradient = jax.grad(lambda v: objective(v)[0])(value)
     return dict(_coax_observed(result), value=np.asarray(loss),
-                jvp=np.asarray(tangent), grad=np.asarray(gradient)), plans
+                jvp=np.asarray(tangent), grad=np.asarray(gradient)), plans, result
 
 
 @pytest.mark.parametrize('target', COAX_TARGETS)
 def test_coax_port_forward_value_jvp_grad_padded(target):
     def records(n):
-        ref, off = _coax_forward_records('off', n)
-        got, plans = _coax_forward_records(target, n)
+        ref, off, result = _coax_forward_records('off', n)
+        source = 'forward().sparam_time_records'
+        if not any(r.kind == 'coax' for r in result.sparam_time_records or ()):
+            _, _, result = _coax_run_record('off', n)
+            source = 'run().sparam_time_records'
+        _coax_arrival(result, f'forward/{target} N={n} source={source}')
+        for key in ('value', 'jvp', 'grad'):
+            print(f'COAX DERIVATIVE {target} N={n} off {key}={ref[key]!r}', file=sys.stderr)
+            assert np.isfinite(ref[key]).all() and np.all(ref[key] != 0), (target, n, 'off', key)
+        got, plans, _ = _coax_forward_records(target, n)
+        for key in ('value', 'jvp', 'grad'):
+            print(f'COAX DERIVATIVE {target} N={n} padded {key}={got[key]!r}', file=sys.stderr)
+            assert np.isfinite(got[key]).all() and np.all(got[key] != 0), (target, n, 'padded', key)
         assert off and not any(p.active for p in off)
         _coax_plans(plans, target)
         return ref, got
 
-    judge(('coax', 'forward', target), f'coax forward/{target}', records, N_STEPS)
+    judge(('coax', 'forward', target), f'coax forward/{target}', records, COAX_STEPS)
     jax.clear_caches()
 
 

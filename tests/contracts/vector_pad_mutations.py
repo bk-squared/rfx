@@ -70,6 +70,20 @@ def extra_key(path, *args, **kwargs):
     return source
 Path.read_text = extra_key
 ''', 'coax_extra', 1),
+    ('run-before-arrival', PIN_FILE, 'test_coax_port_run_padded', '''
+from tests.unit.runners import test_vector_pad_paths
+test_vector_pad_paths.COAX_STEPS = 60
+''', 'coax arrival P/P60=1.0 < 1e6', 3),
+    ('forward-before-arrival', PIN_FILE, 'test_coax_port_forward_value_jvp_grad_padded', '''
+from tests.unit.runners import test_vector_pad_paths
+test_vector_pad_paths.COAX_STEPS = 60
+''', 'coax arrival P/P60=1.0 < 1e6', 3),
+    ('until-decay-no-spectrum-rule', PIN_FILE, 'test_coax_port_until_decay_padded', '''
+from rfx.stepping import vector_pad
+vector_pad._CARRY_PASS = vector_pad._CARRY_PASS - {'coax_sparam_accs'}
+''', "carry entry 'coax_sparam_accs' has no pad rule", 3),
+    ('until-decay-high-end-view', PIN_FILE, 'test_coax_port_until_decay_padded',
+     HIGH_END_VIEW, 'not bitwise', 3),
 )
 
 
@@ -88,6 +102,8 @@ raise SystemExit(pytest.main([{node!r}, '-q', '-s', '-o', 'addopts=']))
     assert result.returncode == 1, name
     assert message in result.stdout, name
     assert f'{failures} failed' in result.stdout, name
+    print(f'VECTOR PAD MUTATION MATCH {name}: message={message!r} '
+          f'failures={failures} exit={result.returncode}', file=sys.stderr)
     if path == PIN_FILE:
         for target in ('aligned', 'odd', 'aligned_slow'):
             assert f'{test}[{target}]' in result.stdout, (name, target)
