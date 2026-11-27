@@ -756,7 +756,7 @@ def _build_step_setup(
     if lumped_rlc_admission is not None:
         _admit_lumped_rlc(materials, pec_edge_masks, use_conformal, use_aniso_inv,
                           aniso_inv_eps_smooth, lumped_rlc_admission)
-        lumped_rlc.admission = None
+        setattr(lumped_rlc, "admission", None)
 
     return _SimSetup(
         carry_init=carry_init,
