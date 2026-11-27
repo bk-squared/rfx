@@ -5,6 +5,24 @@ from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
 import numpy as np
+import re
+
+
+def _memory_only_reason(reason: str) -> bool:
+    refusal = re.compile(
+        r"(?:[^;]*: )?identification would need .*?"
+        r"or raise rfx\.ringdown\.IDENTIFY_MEMORY_BOUND_BYTES")
+    while reason:
+        match = refusal.match(reason)
+        if match is None:
+            return False
+        reason = reason[match.end():]
+        if not reason:
+            return True
+        if not reason.startswith("; "):
+            return False
+        reason = reason[2:]
+    return False
 
 
 def _warn_if_ringdown_truncated(
@@ -63,12 +81,19 @@ def _warn_if_ringdown_truncated(
     poles = merge_growing_poles(*(witnesses[i].get('growing_poles', ())
                                  for i in np.flatnonzero(hot)
                                  if witnesses is not None and i < len(witnesses)))
-    consequence_text = f" {consequence}." if consequence else ""
+    memory_only = witnesses is not None and bool(np.all(unknown[hot])) and not poles and all(
+        witnesses[i]['status'] == 'undetermined'
+        and _memory_only_reason(witnesses[i]['reason'])
+        for i in np.flatnonzero(hot))
+    consequence_text = f" {consequence}." if consequence and not memory_only else ""
     if not poles and any(not unknown[i] for i in np.flatnonzero(hot)):
         consequence_text += " A failing record-end witness means lengthen the record."
     memory_refused = witnesses is not None and any(
         unknown[i] and 'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
         for i in np.flatnonzero(hot))
+    verdict = "NOT PASSED"
+    if memory_only:
+        verdict = "cannot judge (identification refused by the memory bound)"
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
@@ -92,7 +117,7 @@ def _warn_if_ringdown_truncated(
             f"Growing poles (largest growth first): {named}. "
             "No passing value witness supports quoting ")
     warnings.warn(
-        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
+        f"ring-down settling witness {verdict} (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         f"record has no passing value witness.{consequence_text} {advice}"
         f"{quoted_thing} (see the result's settling_db and settling_witness fields)."
