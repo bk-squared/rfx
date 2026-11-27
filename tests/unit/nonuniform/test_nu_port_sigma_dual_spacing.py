@@ -215,6 +215,8 @@ def _capture(sim):
     orig = _rn.run_nonuniform
 
     def spy(grid, materials, *a, **kw):
+        if isinstance(materials, list):
+            materials = materials.pop()
         seen["grid"] = grid
         seen["materials"] = materials
         raise SystemExit
