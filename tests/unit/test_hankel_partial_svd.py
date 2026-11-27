@@ -200,3 +200,33 @@ def test_public_core_stays_full():
     default = core_pencil(y, 1e-6, 1e-6, pencil_parameter=rd.PENCIL_PARAMETER)
     for a, e in zip(default, explicit):
         np.testing.assert_array_equal(a, e)
+
+
+def test_T7_settling_uses_partial_below_full_memory_bound(monkeypatch):
+    """Both settling windows fit the partial charge; public identification refuses."""
+    n_record, channels, b = 2048, 3, 32
+    t = np.arange(n_record)[:, None]
+    y = np.exp(t * (-np.array([.001, .002, .003])
+                    + 2j*np.pi*np.array([.1, .2, .3])))
+    windows = (n_record // 2, 3*n_record // 4)
+    full_charges: list[float] = []
+    partial_charges: list[int] = []
+    for nd in windows:
+        columns = int(rd.PENCIL_PARAMETER * nd)
+        rows, width = nd - columns, channels * columns
+        k = min(rows, width)
+        n_fft = 1 << (nd - 1).bit_length()
+        full_charges.append(1.87*16*(3*rows*width + rows*k + 2*k*width + 4*k*k))
+        partial_charges.append(3*16*(channels*n_fft + 2*b*n_fft
+                                    + 3*(rows + width)*b + 4*b*b))
+    bound = (max(partial_charges) + min(full_charges)) / 2
+    for partial_charge, full_charge in zip(partial_charges, full_charges):
+        assert partial_charge < bound < full_charge
+    monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
+    result = tw.tail_share_witness([('mode', y)], 1., 0, [.1], freq_max=.49)
+    assert 'identification would need ' not in result.reason
+    with pytest.raises(rd.IdentificationMemoryRefused) as caught:
+        rd.identify(y, 1., n_record // 2, n_record, freq_max=.49)
+    assert caught.value.stage == 1
+    assert caught.value.needed_bytes == full_charges[0]
+    assert not caught.value.unresolved
