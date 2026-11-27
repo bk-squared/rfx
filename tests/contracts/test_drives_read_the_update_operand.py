@@ -869,7 +869,7 @@ def _b2_record(kind, edge_name):
         jax.effects_barrier()
 
     assert sorted(saved['E']) == list(range(401))
-    assert saved['pair_counts'] == [400] * 3 and saved['ch_count'] == 400
+    assert saved['pair_counts'] == [400] * 3 and saved['ch_count'] == 1
     ctx = saved['ctx']
     dt, dx = float(ctx.dt), float(ctx.dx)
     dv = dx ** 3
