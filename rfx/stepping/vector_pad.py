@@ -440,7 +440,8 @@ def _pad_factors(factors, plan):
     return tuple(pad_axis_vector(f, a, plan, 0.0) for a, f in enumerate(factors))
 
 
-_INVARIANT_PASS = frozenset({"probe_table", "port_table", "waveguide_table"})
+_INVARIANT_PASS = frozenset({"probe_table", "port_table", "waveguide_table",
+                             "coax_table", "coax_freqs"})
 
 
 def pad_invariants(invariants, plan):

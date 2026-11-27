@@ -98,9 +98,103 @@ def test_vector_pad_carry_rules():
             assert reason
 
 
-from tests.contracts.coax_port_mutations import VECTOR_PAD_MUTATIONS, run_vector_pad_mutation
+INVARIANT_RULES = {
+    'ctx': ('padded', ''),
+    'magnetic_factors': ('padded', ''),
+    'h_row_factors': ('padded', ''),
+    'cpml_inv_eps_r': ('padded', ''),
+    'sheet_coeffs': ('padded', ''),
+    'e_loss': ('padded', ''),
+    'conformal_zero_masks': ('padded', ''),
+    'probe_table': ('pass', ''),
+    'port_table': ('pass', ''),
+    'waveguide_table': ('pass', ''),
+    'coax_table': ('pass', ''),
+    'coax_freqs': ('pass', ''),
+    'owns_x': ('unpadded path',
+               'slab_setup.finish and slab_wrap.split; make_uniform_step refuses a padded slab step'),
+    'cpml_x': ('unpadded path',
+               'slab_setup.build_setup and slab_cpml.publish; make_uniform_step refuses a padded slab step'),
+}
 
 
-@pytest.mark.parametrize('mutation', VECTOR_PAD_MUTATIONS, ids=lambda row: row[0])
-def test_vector_pad_mutations(mutation):
-    run_vector_pad_mutation(mutation)
+def _invariant_name(node):
+    return isinstance(node, ast.Name) and node.id.endswith('invariants')
+
+
+def _string(node):
+    return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+
+def invariant_keys():
+    found = set()
+    setup = ast.parse((ROOT / 'rfx/stepping/uniform_setup.py').read_text())
+    step = ast.parse((ROOT / 'rfx/stepping/uniform.py').read_text())
+    for node in ast.walk(setup):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(_invariant_name(t) for t in targets) and isinstance(node.value, ast.Dict):
+                found.update(k.value for k in node.value.keys if _string(k))
+        if (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store)
+                and _invariant_name(node.value) and _string(node.slice)):
+            found.add(node.slice.value)
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'update' and _invariant_name(node.func.value)):
+            continue
+        assert all(k.arg is not None for k in node.keywords)
+        found.update(k.arg for k in node.keywords)
+        for arg in node.args:
+            if isinstance(arg, ast.DictComp):
+                for generator in arg.generators:
+                    assert isinstance(generator.iter, (ast.Tuple, ast.List))
+                    for pair in generator.iter.elts:
+                        assert isinstance(pair, (ast.Tuple, ast.List)) and _string(pair.elts[0])
+                        found.add(pair.elts[0].value)
+    for node in ast.walk(step):
+        if (isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Load)
+                and _invariant_name(node.value) and _string(node.slice)):
+            found.add(node.slice.value)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == 'get' and _invariant_name(node.func.value)
+                and node.args and _string(node.args[0])):
+            found.add(node.args[0].value)
+        if (isinstance(node, ast.Compare) and _string(node.left)
+                and len(node.ops) == 1 and isinstance(node.ops[0], ast.In)
+                and _invariant_name(node.comparators[0])):
+            found.add(node.left.value)
+    return found
+
+
+def padded_invariant_keys():
+    tree = ast.parse((ROOT / 'rfx/stepping/vector_pad.py').read_text())
+    function, = (node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == 'pad_invariants')
+    found = set()
+    for node in ast.walk(function):
+        if not (isinstance(node, ast.Compare) and isinstance(node.left, ast.Name)
+                and node.left.id == 'key' and len(node.ops) == 1):
+            continue
+        other = node.comparators[0]
+        if isinstance(node.ops[0], ast.Eq) and _string(other):
+            found.add(other.value)
+        elif isinstance(node.ops[0], ast.In) and isinstance(other, (ast.Tuple, ast.List)):
+            assert all(_string(item) for item in other.elts)
+            found.update(item.value for item in other.elts)
+    return found
+
+
+@pytest.mark.source_scan
+def test_vector_pad_invariant_rules():
+    found = invariant_keys()
+    print(f'VECTOR PAD INVARIANT KEYS {sorted(found)}', file=sys.stderr)
+    assert found == INVARIANT_RULES.keys(), (found - INVARIANT_RULES.keys(),
+                                          INVARIANT_RULES.keys() - found)
+    padded = padded_invariant_keys()
+    for key, (rule, reason) in INVARIANT_RULES.items():
+        assert rule in ('padded', 'pass', 'unpadded path')
+        if rule == 'padded':
+            assert key in padded, key
+        elif rule == 'pass':
+            assert key in vector_pad._INVARIANT_PASS, key
+        else:
+            assert reason
