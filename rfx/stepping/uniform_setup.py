@@ -850,4 +850,5 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
     if ctx.pad_plan is not None:
         from rfx.stepping.vector_pad import pad_invariants
         invariants = pad_invariants(invariants, ctx.pad_plan)
-    return invariants
+    from rfx.boundaries.magnetic_coefficient import uniform_h_coefficients
+    return uniform_h_coefficients(invariants, dtype)
