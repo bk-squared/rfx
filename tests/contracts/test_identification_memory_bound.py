@@ -359,9 +359,10 @@ def test_run_settling_warning_retains_memory_remedies(monkeypatch):
         result = _box('uniform').run(n_steps=600, compute_s_params=True,
                                      s_param_freqs=FREQS, skip_preflight=True)
     assert result.settling_witness['status'] == 'undetermined'
-    messages = [str(w.message) for w in caught if 'ring-down settling witness NOT PASSED' in str(w.message)]
+    messages = [str(w.message) for w in caught if 'ring-down settling witness cannot judge (identification refused by the memory bound)' in str(w.message)]
     assert len(messages) == 1
     message = messages[0]
+    assert 'truncation is suspect' not in message
     for row in result.settling_witness['runs']:
         if 'S-parameters' in row.get('reads', ()) and row['status'] != 'pass':
             assert row['reason'] in message
