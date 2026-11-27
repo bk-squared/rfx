@@ -103,6 +103,8 @@ INVARIANT_RULES = {
     'ctx': ('padded', ''),
     'magnetic_factors': ('padded', ''),
     'h_row_factors': ('padded', ''),
+    'h_coefficients': ('after pad', 'uniform_h_coefficients'),
+    'cpml_h_coefficients': ('after pad', 'uniform_h_coefficients'),
     'cpml_inv_eps_r': ('padded', ''),
     'sheet_coeffs': ('refuses', 'surface-impedance sheets'),
     'e_loss': ('padded', ''),
@@ -125,6 +127,41 @@ def _invariant_name(node):
 
 def _string(node):
     return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+
+def after_pad_keys(setup):
+    core, = (node for node in setup.body
+             if isinstance(node, ast.FunctionDef) and node.name == 'core_step_invariants')
+    calls = [node for node in ast.walk(core)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.args and isinstance(node.args[0], ast.Name)
+             and node.args[0].id == 'invariants']
+    pad, = (node for node in calls if node.func.id == 'pad_invariants')
+    imports = {}
+    for node in ast.walk(core):
+        if isinstance(node, ast.ImportFrom):
+            for name in node.names:
+                imports[name.asname or name.name] = (node, name.name)
+    found = {}
+    for call in calls:
+        name = call.func.id
+        if name == 'pad_invariants':
+            continue
+        assert name in imports, f'no source for after pad function {name}'
+        imported, original = imports[name]
+        assert imported.level == 0 and imported.module, name
+        path = ROOT.joinpath(*imported.module.split('.')).with_suffix('.py')
+        assert path.is_file(), f'no source for after pad function {name}: {path}'
+        tree = ast.parse(path.read_text())
+        definitions = [node for node in tree.body
+                       if isinstance(node, ast.FunctionDef) and node.name == original]
+        assert len(definitions) == 1, f'no unique source for after pad function {name}'
+        assert call.lineno > pad.lineno, f'{name} must be called after pad_invariants'
+        found[name] = {node.slice.value for node in ast.walk(definitions[0])
+                       if isinstance(node, ast.Subscript) and isinstance(node.ctx, ast.Store)
+                       and isinstance(node.value, ast.Name) and node.value.id == 'invariants'
+                       and _string(node.slice)}
+    return found
 
 
 def invariant_keys():
@@ -163,7 +200,9 @@ def invariant_keys():
                 and len(node.ops) == 1 and isinstance(node.ops[0], ast.In)
                 and _invariant_name(node.comparators[0])):
             found.add(node.left.value)
-    return found
+    after_pad = after_pad_keys(setup)
+    found.update(key for keys in after_pad.values() for key in keys)
+    return found, after_pad
 
 
 def padded_keys(name):
@@ -186,17 +225,21 @@ def padded_keys(name):
 
 @pytest.mark.source_scan
 def test_vector_pad_invariant_rules():
-    found = invariant_keys()
+    found, after_pad = invariant_keys()
     print(f'VECTOR PAD INVARIANT KEYS {sorted(found)}', file=sys.stderr)
+    resolved = {name: sorted(keys) for name, keys in sorted(after_pad.items())}
+    print(f'VECTOR PAD AFTER PAD FUNCTIONS {resolved}', file=sys.stderr)
     assert found == INVARIANT_RULES.keys(), (found - INVARIANT_RULES.keys(),
                                           INVARIANT_RULES.keys() - found)
     padded = padded_keys('pad_invariants')
     for key, (rule, reason) in INVARIANT_RULES.items():
-        assert rule in ('padded', 'pass', 'refuses', 'unpadded path')
+        assert rule in ('padded', 'pass', 'refuses', 'unpadded path', 'after pad')
         if rule == 'padded':
             assert key in padded, key
         elif rule == 'pass':
             assert key in vector_pad._INVARIANT_PASS, key
+        elif rule == 'after pad':
+            assert key in after_pad.get(reason, ()), (key, reason)
         elif rule == 'refuses':
             plan = vector_pad.plan_pad((4, 4, 5), target='aligned',
                                        periodic_axes=(False, False, False))

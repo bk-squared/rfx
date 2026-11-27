@@ -54,6 +54,40 @@ def extra_key(path, *args, **kwargs):
     return source
 Path.read_text = extra_key
 ''', 'coax_extra', 1),
+    ('after-pad-moved-before-pad', CONTRACT_FILE, 'test_vector_pad_invariant_rules', '''
+from pathlib import Path
+original = Path.read_text
+def moved_fold(path, *args, **kwargs):
+    source = original(path, *args, **kwargs)
+    if str(path).endswith('/rfx/stepping/uniform_setup.py'):
+        old = """    if ctx.pad_plan is not None:
+        from rfx.stepping.vector_pad import pad_invariants
+        invariants = pad_invariants(invariants, ctx.pad_plan)
+    from rfx.boundaries.magnetic_coefficient import uniform_h_coefficients
+    return uniform_h_coefficients(invariants, dtype)"""
+        new = """    from rfx.boundaries.magnetic_coefficient import uniform_h_coefficients
+    invariants = uniform_h_coefficients(invariants, dtype)
+    if ctx.pad_plan is not None:
+        from rfx.stepping.vector_pad import pad_invariants
+        invariants = pad_invariants(invariants, ctx.pad_plan)
+    return invariants"""
+        assert source.count(old) == 1
+        source = source.replace(old, new)
+    return source
+Path.read_text = moved_fold
+''', 'uniform_h_coefficients', 1),
+    ('after-pad-new-entry', CONTRACT_FILE, 'test_vector_pad_invariant_rules', '''
+from pathlib import Path
+original = Path.read_text
+def extra_key(path, *args, **kwargs):
+    source = original(path, *args, **kwargs)
+    if str(path).endswith('/rfx/boundaries/magnetic_coefficient.py'):
+        old = '    invariants["h_coefficients"] = yee_h_coefficients('
+        assert source.count(old) == 1
+        source = source.replace(old, '    invariants["after_pad_extra"] = 0\\n' + old)
+    return source
+Path.read_text = extra_key
+''', 'after_pad_extra', 1),
     ('invariant-no-table-rule', CONTRACT_FILE, 'test_vector_pad_invariant_rules', '''
 from rfx.stepping import vector_pad
 vector_pad._INVARIANT_PASS = vector_pad._INVARIANT_PASS - {'coax_table'}
