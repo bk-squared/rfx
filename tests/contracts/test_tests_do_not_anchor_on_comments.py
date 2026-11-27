@@ -8,6 +8,7 @@ import io
 import inspect
 from pathlib import Path
 import subprocess
+import sys
 from time import perf_counter
 import tokenize
 
@@ -19,7 +20,8 @@ CONTRACT = Path(__file__).relative_to(ROOT).as_posix()
 TOOL_DIRECTIVES = ("noqa", "type:", "pragma", "fmt:", "isort:", "pylint:", "mypy:", "ruff:", "-*-")
 EXEMPTIONS = (
     ("tests/crossval/rt5880_patch/reference/make_openems_reference.py",
-     "patches a pinned upstream script; the comments are upstream's; pin: A_TUTORIAL_SHA256"),
+     "patches a pinned upstream script by its comments (pin: A_TUTORIAL_SHA256); "
+     "its copy proof compares a frozen slice of its own builder verbatim"),
 )
 pytestmark = pytest.mark.source_scan
 
@@ -101,7 +103,7 @@ def scan_repository(root: Path) -> list[str]:
 def test_tracked_tests_do_not_anchor_on_comments():
     started = perf_counter()
     hits = scan_repository(ROOT)
-    print(f"comment-anchor scan: {perf_counter() - started:.3f}s")
+    print(f"comment-anchor scan: {perf_counter() - started:.3f}s", file=sys.stderr)
     assert not hits, "\n".join(hits)
 
 
@@ -163,4 +165,4 @@ def test_planted_assertion_catches_mutations(planted_tree, original, replacement
     exec(compile(source.replace(original, replacement), "<mutated-scanner>", "exec"), namespace)
     with pytest.raises(AssertionError, match="planted Python, shell and prefix anchors") as caught:
         assert_planted_hits(namespace["scan_repository"], planted_tree)
-    print(f"mutation {original} -> {replacement}: {caught.value}")
+    print(f"mutation {original} -> {replacement}: {caught.value}", file=sys.stderr)
