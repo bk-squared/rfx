@@ -81,7 +81,7 @@ def _warn_if_ringdown_truncated(
     poles = merge_growing_poles(*(witnesses[i].get('growing_poles', ())
                                  for i in np.flatnonzero(hot)
                                  if witnesses is not None and i < len(witnesses)))
-    memory_only = bool(np.all(unknown[hot])) and not poles and all(
+    memory_only = witnesses is not None and bool(np.all(unknown[hot])) and not poles and all(
         witnesses[i]['status'] == 'undetermined'
         and _memory_only_reason(witnesses[i]['reason'])
         for i in np.flatnonzero(hot))
