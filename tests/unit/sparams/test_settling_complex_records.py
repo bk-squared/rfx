@@ -51,9 +51,8 @@ def test_invalid_channel_is_not_hidden(bad):
 
 @pytest.mark.parametrize('source_end', [0, 40])
 def test_zero_post_source_channels_have_zero_share(monkeypatch, source_end):
-    import rfx.ringdown as ringdown
 
-    original = ringdown.identify
+    original = tail_witness._IDENTIFICATION.identify
     shapes = []
 
     def observed(series, *args, **kwargs):
@@ -101,9 +100,8 @@ def test_all_zero_post_source_group_passes(monkeypatch, source_end):
 
 
 def test_named_records_share_one_multichannel_identification(monkeypatch):
-    import rfx.ringdown as ringdown
 
-    original = ringdown.identify
+    original = tail_witness._IDENTIFICATION.identify
     calls = []
 
     def observed(series, dt, start, stop, **kwargs):
@@ -120,9 +118,8 @@ def test_named_records_share_one_multichannel_identification(monkeypatch):
 
 
 def test_late_source_end_uses_remaining_window(monkeypatch):
-    import rfx.ringdown as ringdown
 
-    original = ringdown.identify
+    original = tail_witness._IDENTIFICATION.identify
     windows = []
 
     def observed(series, dt, start, stop, **kwargs):

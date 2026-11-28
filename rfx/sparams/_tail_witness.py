@@ -9,13 +9,13 @@ from collections.abc import Mapping
 from functools import partial
 from typing import NamedTuple
 
-from rfx.ringdown import identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole
+from rfx.ringdown import _identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole
 from rfx.measurement.record_end import (IdentificationOps, TailShareWitness,
                                          _pole_contributions as _record_pole_contributions,
                                          _rounding_only_records, merge_growing_poles, record_end_error)
 
 _IDENTIFICATION = IdentificationOps(
-    identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
+    partial(_identify, svd="partial"), judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
 _pole_contributions = partial(_record_pole_contributions, identification=_IDENTIFICATION)
 
 

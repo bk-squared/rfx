@@ -77,7 +77,7 @@ def _decimate(Y: np.ndarray, factors, *, decimate_fn) -> np.ndarray:
 
 
 def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *,
-            pencil_parameter: float, max_rank=None):
+            pencil_parameter: float, max_rank=None, svd="full", fits=None):
     """Side-by-side stacked matrix pencil on ``Yd (Nd, C)``."""
     from numpy.lib.stride_tricks import sliding_window_view
 
@@ -93,21 +93,33 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *,
         raise ValueError(
             f"a channel has zero or non-finite RMS over the window ({rms}); "
             "the identification channel saw no ringing to identify")
-    b0, b1 = [], []
-    for ch in range(C):
-        y = Yd[:, ch].astype(np.complex128) / rms[ch]
-        b0.append(sliding_window_view(y, L)[:M])
-        b1.append(sliding_window_view(y[1:], L)[:M])
-    Y0 = np.concatenate(b0, axis=1)
-    Y1 = np.concatenate(b1, axis=1)
-    U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
+    if svd == "partial":
+        from rfx.measurement._hankel_svd import _partial_svd
+
+        result = _partial_svd(Yd.astype(np.complex128) / rms, L, sv_rel, fits)
+        if result.cause:
+            return result
+        U, sv, Vh = result.u, result.s, result.vh
+    else:
+        b0: list[np.ndarray] = []
+        b1: list[np.ndarray] = []
+        for ch in range(C):
+            y = Yd[:, ch].astype(np.complex128) / rms[ch]
+            b0.append(sliding_window_view(y, L)[:M])
+            b1.append(sliding_window_view(y[1:], L)[:M])
+        Y0 = np.concatenate(b0, axis=1)
+        Y1 = np.concatenate(b1, axis=1)
+        U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
     if not sv[0] > 0:
         raise ValueError("the stacked Hankel matrix of the window is zero")
     rank = max(int(np.sum(sv > sv_rel * sv[0])), 1)
     if max_rank is not None:
         rank = min(rank, max_rank)
     Ur, sr, Vr = U[:, :rank], sv[:rank], Vh[:rank].conj().T
-    Z = (Ur.conj().T @ Y1 @ Vr) / sr[:, None]
+    if svd == "partial":
+        Z = (Ur.conj().T @ result.operator.product(Vr, shift=1)) / sr[:, None]
+    else:
+        Z = (Ur.conj().T @ Y1 @ Vr) / sr[:, None]
     lam = np.linalg.eigvals(Z)
     valid = np.isfinite(lam) & (np.abs(lam) > 0)
     n_invalid = int(np.sum(~valid))

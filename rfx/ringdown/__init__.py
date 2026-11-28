@@ -447,6 +447,13 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     residue fit made jointly with the kept poles (``growing_amplitude``); the
     completion itself uses the kept poles' own fit.
     """
+    return _identify(series, dt, n_start, n_stop, freq_max=freq_max, guard=guard,
+                     sv_rel=sv_rel, unit_tol=unit_tol, svd="full")
+
+
+def _identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
+              sv_rel=1.0e-6, unit_tol=1.0e-6, svd="full") -> RingdownModel:
+    """Shared identification; only post-run settling requests the partial SVD."""
     Y, _ = _as_2d(series)
     n_start, n_stop = int(n_start), int(n_stop)
     if not (0 <= n_start < n_stop <= Y.shape[0]):
@@ -459,10 +466,21 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     factors, _kept = _identification_plan(win.shape[0], dt, freq_max, win.shape[1])
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
-    _check_identification_memory(
-        win.shape[0], Yd.shape, bound=IDENTIFY_MEMORY_BOUND_BYTES,
-        pencil_parameter=PENCIL_PARAMETER)
-    lam_dec, rank, lam_grow, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
+    from rfx.ringdown._pencil import _partial_fits
+
+    if svd == "partial" and not _partial_fits(Yd.shape, 32):
+        _check_identification_memory(
+            win.shape[0], Yd.shape, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+            pencil_parameter=PENCIL_PARAMETER)
+        svd = "full"
+    if svd == "full":
+        _check_identification_memory(
+            win.shape[0], Yd.shape, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+            pencil_parameter=PENCIL_PARAMETER)
+        extracted = _pencil(Yd, float(sv_rel), float(unit_tol))
+    else:
+        extracted = _pencil(Yd, float(sv_rel), float(unit_tol), svd=svd, n_win=win.shape[0])
+    lam_dec, rank, lam_grow, n_invalid, sv = extracted
     _check_identification_memory(
         win.shape[0], Yd.shape, r=rank, bound=IDENTIFY_MEMORY_BOUND_BYTES,
         pencil_parameter=PENCIL_PARAMETER)

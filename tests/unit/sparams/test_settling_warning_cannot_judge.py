@@ -66,6 +66,21 @@ def test_T2_two_rows_multiple_groups():
     assert "truncation is suspect" not in message
 
 
+@pytest.mark.parametrize('clause', [
+    "the partial SVD reached the full SVD's operation count",
+    "a partial-SVD block of b=64 exceeded the bound",
+    "the partial SVD stopped on a LAPACK error",
+])
+def test_partial_fallback_memory_refusal(clause):
+    reason = STAGE1.replace('(pencil;', f'(pencil, full-SVD fallback after {clause};')
+    message = _message([np.nan], [_row(reason)])
+    assert message.startswith(
+        "ring-down settling witness cannot judge (identification refused by the memory bound) ")
+    assert reason in message
+    assert "NOT PASSED" not in message
+    assert "truncation is suspect" not in message
+
+
 def test_T3_real_fail():
     row = _row("pole tail exceeds threshold")
     row['status'] = 'fail'
