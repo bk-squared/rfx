@@ -54,6 +54,7 @@ def run_uniform(
     pec_shapes=None,
     # pre-built grid and materials passed in from Simulation.run()
     grid=None,
+    _setup_inputs=None,
     base_materials=None,
     conductors=None,
     debye_spec=None,
@@ -164,6 +165,9 @@ def run_uniform(
         conformal_pec=conformal_pec, debye_spec=debye_spec,
         lorentz_spec=lorentz_spec, pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
 
+    if _setup_inputs is not None:
+        conductors, base_materials, pec_mask = _setup_inputs
+        _setup_inputs.clear()
     materials = base_materials
 
     # Fold RLC R and C into material arrays before port/source setup
@@ -595,6 +599,7 @@ def run_uniform(
         debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
+    del conformal_areas
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     from rfx.model.tensor_operands import attach_run_tensor
     materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps, conformal_weights)
@@ -719,6 +724,9 @@ def run_uniform(
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
 
+    del base_materials, _
+    del materials
+
     # Main simulation
     if until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
@@ -728,7 +736,7 @@ def run_uniform(
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
                  if until_decay > 0 else None)
         sim_result = prepared_step.advance(stepping_product, _simulation.run_until_decay,
-            grid, materials,
+            grid, None,
             decay_by=until_decay,
             echo_bound=echo_bound,
             n_end=n_end,
@@ -777,7 +785,7 @@ def run_uniform(
         )
     else:
         sim_result = prepared_step.advance(stepping_product, _simulation.run,
-            grid, materials, n_steps,
+            grid, None, n_steps,
             boundary=sim._boundary,
             cpml_axes=cpml_axes,
             pec_axes=pec_axes,

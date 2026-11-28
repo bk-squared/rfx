@@ -112,6 +112,9 @@ def run(
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     Parameters
     ----------
     grid : Grid
@@ -270,7 +273,6 @@ def run(
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
-    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -278,6 +280,8 @@ def run(
         raise ValueError("gradient must be 'autodiff' or 'adjoint'")
 
     # ---- shared setup (W6.2) ----
+    if isinstance(materials, list):
+        materials = materials.pop()
     _setup = _build_step_setup(
         measurement=measurement,
         grid=grid,
@@ -401,11 +405,13 @@ def run(
         pad_plan=_pad,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
-    admission_kwargs = ({} if lumped_rlc_admission is None else
-                        {"lumped_rlc_admission": lumped_rlc_admission})
-    _core_step = (make_core_step(_step_ctx, **admission_kwargs) if measurement is None else make_core_step(
-        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype,
-        **admission_kwargs))
+    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
+    from rfx.model.materials import kernel_context
+    if gradient != "adjoint":
+        _step_ctx = kernel_context(_step_ctx)
+        _setup.ctx_kwargs["materials"] = _step_ctx.materials
+        materials = _step_ctx.materials
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -813,6 +819,9 @@ def run_until_decay(
 ) -> SimResult:
     """Run until the field energy left after the drive has decayed.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     Compiled scan chunks end at completed steps ``k * check_interval``; every
     stop check runs on the host at those boundaries. On a high-Q structure
     whose mode reaches the absorber, the stop can move by about 170 steps
@@ -946,11 +955,12 @@ def run_until_decay(
     validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
-    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
     # ---- shared setup (W6.2) ----
+    if isinstance(materials, list):
+        materials = materials.pop()
     _setup = _build_step_setup(
         measurement=measurement,
         grid=grid,
@@ -1056,12 +1066,9 @@ def run_until_decay(
     # The per-cell arrays are an argument of the jitted step, not constants
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
-    admission_kwargs = ({} if lumped_rlc_admission is None else
-                        {"lumped_rlc_admission": lumped_rlc_admission})
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx, **admission_kwargs) if measurement is None else
-        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype,
-                             **admission_kwargs),
+        core_step_invariants(_step_ctx) if measurement is None else
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
         tuple(grid.shape if _pad is None else _pad.padded))
 
     @jax.jit
@@ -1158,6 +1165,13 @@ def run_until_decay(
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
+    from rfx.model.materials import kernel_context
+    _step_ctx = kernel_context(_step_ctx)
+    _setup.ctx_kwargs["materials"] = _step_ctx.materials
+    materials = materials._replace(
+        sigma_lumped=None, eps_r_lumped=None, components=None, edge_keep=None, sigma_film=None)
+    if advisory is not None and advisory["lossy"] is not None:
+        materials = materials._replace(sigma=None)
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
@@ -1187,6 +1201,9 @@ def run_until_decay(
 
     # Like scan_with_progress, call lax.scan directly: full chunks share
     # its executable and only the ragged tail needs another length.
+    _setup = _setup._replace(carry_init={})
+    _setup.ctx_kwargs["materials"] = None
+    _step_ctx = replace(_step_ctx, materials=None)
     pending_tail = None
     while actual_steps < max_steps:
         # All checks use completed counts k * check_interval.

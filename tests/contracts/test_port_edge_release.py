@@ -57,6 +57,7 @@ def capture(monkeypatch, sim, grid, lane, occupancy=None, topology_box=None, p=.
     def at_kernel(*args, **kwargs):
         result = original(*args, **kwargs)
         seen['conductors'] = result[0]
+        seen['pec_edges'] = result[0].pec_edges
         return result
     def kernel(*args, **kwargs):
         seen['occupancy'] = kwargs['pec_occupancy']
@@ -380,7 +381,7 @@ def test_wire_dead_edge_releases_only_live_edges(monkeypatch, lane):
     root, actual = seen['conductors'], np.asarray(seen['occupancy'])
     assert root.released_port_edges == (
         ('port[0]', 'ez', (8,8,4)), ('port[0]', 'ez', (8,8,5)), ('port[0]', 'ez', (8,8,6)))
-    assert root.pec_edges[2][8,8,7]
+    assert seen['pec_edges'][2][8,8,7]
     for cells in [
             [(7,7,4), (7,8,4), (8,7,4), (8,8,4)],
             [(7,7,5), (7,8,5), (8,7,5), (8,8,5)],

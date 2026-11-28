@@ -41,6 +41,7 @@ def _forward_from_materials(
     diagnostics=(),
     n_steps: int,
     conductors=None,
+    _setup_inputs=None,
     tfsf_angle_override=None,
     checkpoint: bool = True,
     gradient: str = "autodiff",
@@ -141,6 +142,9 @@ def _forward_from_materials(
         setup_wire_port,
         _wire_port_cells,
     )
+
+    if _setup_inputs is not None:
+        materials = _setup_inputs.pop()
 
     rlc_metas = None
     if self._lumped_rlc:
@@ -553,9 +557,10 @@ def _forward_from_materials(
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
         self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance,
         realization_options=(subpixel_smoothing, _conformal))
+    del materials, _drawn_materials, _
     result = prepared_step.advance(stepping_product, _run,
         grid,
-        materials,
+        None,
         n_steps,
         boundary=self._boundary,
         cpml_axes=cpml_axes_run,

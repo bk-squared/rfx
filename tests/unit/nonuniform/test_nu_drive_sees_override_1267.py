@@ -303,6 +303,8 @@ def _built_up_to_the_scan(sim, eps_override=None, mutate_from=None):
         return out
 
     def _scan(grid, materials, *a, **kw):
+        if isinstance(materials, list):
+            materials = materials.pop()
         stepped["materials"] = materials
         stepped["dt"] = float(grid.dt)
         raise _Built

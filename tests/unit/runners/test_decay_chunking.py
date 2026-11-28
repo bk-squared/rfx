@@ -123,6 +123,8 @@ def _run(
         if captured["family_peaks"] is not None:
             kwargs["family_peaks"] = captured["family_peaks"]
         captured["grid"], captured["materials"] = args[:2]
+        if isinstance(args[1], list):
+            captured["materials"] = args[1][0]
         captured["low"] = driver(*args, **kwargs)
         return captured["low"]
 

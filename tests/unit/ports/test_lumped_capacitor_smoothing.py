@@ -86,6 +86,8 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
     observed = {}
 
     def capture(grid, materials, n_steps, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         cell = (nu_core.position_to_index(grid, LOAD) if lane.startswith("nu")
                 else grid.position_to_index(LOAD))
         tensor = getattr(materials.components, "tensor", None)

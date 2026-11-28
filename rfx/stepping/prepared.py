@@ -3,6 +3,7 @@
 These entries unpack the solve-owned operands. Metadata holds a weak reference
 back to this product; no reporting assembly participates in stepping.
 """
+from copy import copy
 from dataclasses import fields
 
 
@@ -28,6 +29,7 @@ def release_dense(product):
         sheets=(), wires=(), sheet_impedance=(), geometry_masks={}, assembly_entries=(),
         assembly=(), sheet_operator=None, _prepared_owner=None).items():
         object.__setattr__(product, name, value)
+    object.__setattr__(product, "_dense_released", True)
 
 
 def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
@@ -36,28 +38,38 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
     One-device and wrapped slab steps sample from the attached plan; the
     subgridded plan carries no channels (its runner owns sampling).
     """
-    args = list(args)
+    operands = list(args)
     layout = _operand_layout
     plan = getattr(getattr(product, "_prepared_solve", None), "measurement", None)
     attached = plan is not None and plan.path != "run_subgridded"
     if attached and layout in ("grid", "wrapped_uniform_slab", "graded_slab"):
         kwargs["measurement"] = plan
-    if layout == "grid":
-        args[:2] = product.grid, product.materials
+    if layout == "grid" and plan is not None and plan.path == "run_subgridded":
+        operands[:2] = product.grid, product.materials
+    elif layout == "grid":
+        operands[:2] = product.grid, [product.materials]
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
         if attached:
             from rfx.measurement.accumulators import validate_flux_prefix
             validate_flux_prefix(product._prepared_solve.sim, product.grid, plan,
                                  kwargs.get("flux_monitors") or ())
+        from rfx.model.source_admission import LumpedRLCInputs
+        admissions = [value for value in (*operands, *kwargs.values())
+                      if isinstance(value, LumpedRLCInputs)]
+        for value in admissions:
+            sim, _ = value.admission
+            value.admission = (sim, copy(product))
+        del admissions
+        release_dense(product)
     elif layout == "wrapped_uniform_slab":
-        args.insert(0, [product.grid, product.materials, product.pec_edges])
+        operands.insert(0, [product.grid, product.materials, product.pec_edges])
         release_dense(product)
     elif layout == "slab":
         kwargs["sharded_materials"] = product.materials
         kwargs["sharded_pec_mask"] = product.pec_edges
     elif layout == "graded_slab":
-        args[:3] = product.grid, product.materials, product.pec_edges
+        operands[:3] = product.grid, product.materials, product.pec_edges
     elif layout == "disjoint":
-        args[1] = product.kernel_context[0]
-    return stepper(*args, **kwargs)
+        operands[1] = product.kernel_context[0]
+    return stepper(*operands, **kwargs)

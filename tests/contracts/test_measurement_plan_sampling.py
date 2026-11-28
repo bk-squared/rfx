@@ -75,7 +75,8 @@ def capture(sim, entry, graded, edit=None, n_steps=12):
         seen['plan'] = solve.measurement
 
         def stepped(*a, **k):
-            seen['calls'].append((stepper, a, k))
+            saved = (a[0], a[1][0], *a[2:]) if isinstance(a[1], list) else a
+            seen['calls'].append((stepper, saved, k))
             return stepper(*a, **k)
         return advance(product, stepped, *args, **kwargs)
 

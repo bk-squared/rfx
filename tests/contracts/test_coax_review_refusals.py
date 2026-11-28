@@ -308,7 +308,7 @@ def test_plate_at_reference(monkeypatch, face):
     lo, hi = (ref_z, ref_z+.001) if face == 'top' else (ref_z-.001, ref_z)
     sim.add(Box((.003, .003, lo), (.009, .009, hi)), material='pec')
     captured = capture(monkeypatch, sim, 'run')
-    root = sim.realized_geometry().conductors
+    root = captured['conductors']
     check_plate(root, captured, 8 if face == 'top' else 80, face)
 
 

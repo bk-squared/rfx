@@ -153,7 +153,7 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
             elif layout == "wrapped_uniform_slab":
                 mats = {"materials": args[0][1]}
             else:
-                mats = {"materials": args[1]}
+                mats = {"materials": args[1][0] if isinstance(args[1], list) else args[1]}
                 if lane == "subgridded":
                     mats["fine"] = args[2]
             separate = arrays(

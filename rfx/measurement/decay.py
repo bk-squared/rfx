@@ -230,6 +230,8 @@ def boundary_energy(grid, materials, side_step, *, dx=None, absorbing=True,
     bounds = _interior(grid) if absorbing else ((0, grid.nx), (0, grid.ny), (0, grid.nz))
     region = tuple(slice(lo, hi) for lo, hi in bounds)
     axes = field_axes(grid)
+    from rfx.model.materials import kernel_materials
+    materials = kernel_materials(materials)
     arrays, rebuild = split_loop_invariants(dict(materials=materials), (grid.nx, grid.ny, grid.nz))
     if graded:
         arrays = dict(arrays=arrays, volumes=yee_volumes(grid, region))

@@ -215,7 +215,8 @@ def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_ki
         pass
 
     def capture(*args, **kwargs):
-        assert args[1].components.tensor.inv_eps is not None
+        materials = args[1].pop() if isinstance(args[1], list) else args[1]
+        assert materials.components.tensor.inv_eps is not None
         raise Captured
 
     monkeypatch.setattr(stepping, "run", capture)
@@ -317,6 +318,8 @@ def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
         pass
 
     def capture(grid_arg, materials, *args, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         assert kwargs["pec_occupancy"] is None
         assert materials.components.tensor.inv_eps[2][edge] > .99/materials.eps_r[edge]
         driven = [s for s in kwargs["sources"] if (s.i, s.j, s.k) == edge]

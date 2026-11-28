@@ -116,6 +116,8 @@ def run_until_decay_reference(
     advisory=None,
     family_peaks: dict | None = None,
 ) -> SimResult:
+    if isinstance(materials, list):
+        materials = materials.pop()
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: this function uses a Python loop, not jax.lax.scan, so scan-level gradient checkpointing does not apply. Use run() with checkpoint_segments if you need scan-level checkpointing."

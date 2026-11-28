@@ -1,5 +1,6 @@
 """S1 model and drive identity at the low-level runner handover."""
 import sys
+from copy import copy
 
 import jax
 import jax.numpy as jnp
@@ -23,8 +24,17 @@ def scene(face='top', **kwargs):
 
 
 def capture(monkeypatch, sim, entry):
+    from rfx.model import conductors
     seen = {}
+    at_kernel = conductors.at_kernel
+    def snapshot(*args, **kwargs):
+        product, record = at_kernel(*args, **kwargs)
+        seen['conductors'] = copy(product)
+        return product, record
+    monkeypatch.setattr(conductors, 'at_kernel', snapshot)
     def kernel(grid, materials, n_steps, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         seen.update(grid=grid, materials=materials, **kwargs)
         raise Captured
     monkeypatch.setattr('rfx.simulation.run', kernel)

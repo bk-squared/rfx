@@ -342,8 +342,9 @@ def test_low_level_realized_tensor_matches_high_level_probe_record(kind, monkeyp
     captured = []
     def observe(product, stepper, *args, **kwargs):
         def recording(*a, **kw):
+            saved = (a[0], a[1][0], *a[2:]) if isinstance(a[1], list) else a
             result = stepper(*a, **kw)
-            captured.append((a, kw, result))
+            captured.append((saved, kw, result))
             return result
         return original(product, recording, *args, **kwargs)
     monkeypatch.setattr(prepared, "advance", observe)

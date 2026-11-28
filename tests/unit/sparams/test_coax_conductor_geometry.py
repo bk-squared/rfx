@@ -344,6 +344,8 @@ def _capture_runner_args(monkeypatch, call):
     seen = {}
 
     def _spy(grid, materials, n_steps, **kw):
+        if isinstance(materials, list):
+            materials = materials.pop()
         seen["grid"] = grid
         seen["materials"] = materials
         seen["pec_edge_masks"] = kw.get("pec_edge_masks")
